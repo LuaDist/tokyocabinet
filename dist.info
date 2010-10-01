@@ -1,0 +1,10 @@
+--- This file is part of LuaDist project
+
+name = "tokyocabinet"
+version = "1.4.29"
+
+desc = " Tokyo Cabinet: a modern implementation of DBM"
+author = "Mikio Hirabayashi"
+license = "GNU Lesser General Public License"
+url = "http://sourceforge.net/projects/tokyocabinet/"
+maintainer = "Peter Kapec"
