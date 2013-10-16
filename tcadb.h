@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The abstract database API of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -27,11 +27,6 @@
 __TCADB_CLINKAGEBEGIN
 
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <time.h>
-#include <math.h>
 #include <tcutil.h>
 #include <tchdb.h>
 #include <tcbdb.h>
@@ -405,13 +400,14 @@ uint64_t tcadbsize(TCADB *adb);
 /* Call a versatile function for miscellaneous operations of an abstract database object.
    `adb' specifies the abstract database object.
    `name' specifies the name of the function.  All databases support "put", "out", "get",
-   "putlist", "outlist", and "getlist".  "put" is to store a record.  It receives a key and a
-   value, and returns an empty list.  "out" is to remove a record.  It receives a key, and
-   returns an empty list.  "get" is to retrieve a record.  It receives a key, and returns a list
-   of the values.  "putlist" is to store records.  It receives keys and values one after the
+   "putlist", "outlist", "getlist", and "getpart".  "put" is to store a record.  It receives a
+   key and a value, and returns an empty list.  "out" is to remove a record.  It receives a key,
+   and returns an empty list.  "get" is to retrieve a record.  It receives a key, and returns a
+   list of the values.  "putlist" is to store records.  It receives keys and values one after the
    other, and returns an empty list.  "outlist" is to remove records.  It receives keys, and
    returns an empty list.  "getlist" is to retrieve records.  It receives keys, and returns keys
-   and values of corresponding records one after the other.
+   and values of corresponding records one after the other.  "getpart" is to retrieve the partial
+   value of a record.  It receives a key, the offset of the region, and the length of the region.
    `args' specifies a list object containing arguments.
    If successful, the return value is a list object of the result.  `NULL' is returned on failure.
    Because the object of the return value is created with the function `tclistnew', it
@@ -473,6 +469,13 @@ typedef bool (*ADBMAPPROC)(void *map, const char *kbuf, int ksiz, const char *vb
    `skel' specifies the extra database skeleton.
    If successful, the return value is true, else, it is false. */
 bool tcadbsetskel(TCADB *adb, ADBSKEL *skel);
+
+
+/* Set the multiple database skeleton to an abstract database object.
+   `adb' specifies the abstract database object.
+   `num' specifies the number of inner databases.
+   If successful, the return value is true, else, it is false. */
+bool tcadbsetskelmulti(TCADB *adb, int num);
 
 
 /* Get the open mode of an abstract database object.

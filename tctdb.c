@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The table database API of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -43,6 +43,7 @@
 #define TDBFTSBMNUM    524287            // number of elements of full-text search bitmap
 #define TDBNUMCNTCOL   "_num"            // column name of number counting
 #define TDBCOLBUFSIZ   1024              // size of a buffer for a column value
+#define TDBNUMCOLMAX   16                // maximum number of columns of the long double
 #define TDBHINTUSIZ    256               // unit size of the hint string
 #define TDBORDRATIO    0.2               // ratio of records to use the order index
 
@@ -52,12 +53,12 @@ enum {                                   // enumeration for duplication behavior
   TDBPDCAT                               // concatenate values
 };
 
-typedef struct {                         // type of structure for a sort key
+typedef struct {                         // type of structure for a sort record
   const char *kbuf;                      // pointer to the primary key
   int ksiz;                              // size of the primary key
   char *vbuf;                            // pointer to the value
   int vsiz;                              // size of the value
-} TDBSORTKEY;
+} TDBSORTREC;
 
 typedef struct {                         // type of structure for a full-text search unit
   TCLIST *tokens;                        // q-gram tokens
@@ -81,11 +82,11 @@ typedef struct {                         // type of structure for a full-text nu
 
 
 /* private macros */
-#define TDBLOCKMETHOD(TC_tdb, TC_wr) \
+#define TDBLOCKMETHOD(TC_tdb, TC_wr)                            \
   ((TC_tdb)->mmtx ? tctdblockmethod((TC_tdb), (TC_wr)) : true)
-#define TDBUNLOCKMETHOD(TC_tdb) \
+#define TDBUNLOCKMETHOD(TC_tdb)                         \
   ((TC_tdb)->mmtx ? tctdbunlockmethod(TC_tdb) : true)
-#define TDBTHREADYIELD(TC_tdb) \
+#define TDBTHREADYIELD(TC_tdb)                          \
   do { if((TC_tdb)->mmtx) sched_yield(); } while(false)
 
 
@@ -109,6 +110,8 @@ static bool tctdbsetindeximpl(TCTDB *tdb, const char *name, int type);
 static int64_t tctdbgenuidimpl(TCTDB *tdb, int64_t inc);
 static TCLIST *tctdbqrysearchimpl(TDBQRY *qry);
 static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx);
+static long double tctdbatof(const char *str);
+static bool tctdbqryidxcurjumpnum(BDBCUR *cur, const char *kbuf, int ksiz, bool first);
 static bool tctdbqryonecondmatch(TDBQRY *qry, TDBCOND *cond, const char *pkbuf, int pksiz);
 static bool tctdbqryallcondmatch(TDBQRY *qry, const char *pkbuf, int pksiz);
 static bool tctdbqrycondmatch(TDBCOND *cond, const char *vbuf, int vsiz);
@@ -120,10 +123,10 @@ static bool tctdbqrycondchecknumoreq(const char *vbuf, const char *expr);
 static bool tctdbqrycondcheckfts(const char *vbuf, int vsiz, TDBCOND *cond);
 static int tdbcmppkeynumasc(const TCLISTDATUM *a, const TCLISTDATUM *b);
 static int tdbcmppkeynumdesc(const TCLISTDATUM *a, const TCLISTDATUM *b);
-static int tdbcmpsortkeystrasc(const TDBSORTKEY *a, const TDBSORTKEY *b);
-static int tdbcmpsortkeystrdesc(const TDBSORTKEY *a, const TDBSORTKEY *b);
-static int tdbcmpsortkeynumasc(const TDBSORTKEY *a, const TDBSORTKEY *b);
-static int tdbcmpsortkeynumdesc(const TDBSORTKEY *a, const TDBSORTKEY *b);
+static int tdbcmpsortrecstrasc(const TDBSORTREC *a, const TDBSORTREC *b);
+static int tdbcmpsortrecstrdesc(const TDBSORTREC *a, const TDBSORTREC *b);
+static int tdbcmpsortrecnumasc(const TDBSORTREC *a, const TDBSORTREC *b);
+static int tdbcmpsortrecnumdesc(const TDBSORTREC *a, const TDBSORTREC *b);
 static uint16_t tctdbidxhash(const char *pkbuf, int pksiz);
 static bool tctdbidxput(TCTDB *tdb, const void *pkbuf, int pksiz, TCMAP *cols);
 static bool tctdbidxputone(TCTDB *tdb, TDBIDX *idx, const char *pkbuf, int pksiz, uint16_t hash,
@@ -150,6 +153,7 @@ static int tctdbidxftscmpstrocr(TDBFTSSTROCR *a, TDBFTSSTROCR *b);
 static int tctdbidxftscmpnumocr(TDBFTSNUMOCR *a, TDBFTSNUMOCR *b);
 static TDBFTSUNIT *tctdbftsparseexpr(const char *expr, int esiz, int op, int *np);
 static bool tctdbdefragimpl(TCTDB *tdb, int64_t step);
+static bool tctdbcacheclearimpl(TCTDB *tdb);
 static bool tctdbforeachimpl(TCTDB *tdb, TCITER iter, void *op);
 static int tctdbqryprocoutcb(const void *pkbuf, int pksiz, TCMAP *cols, void *op);
 static bool tctdblockmethod(TCTDB *tdb, bool wr);
@@ -784,12 +788,12 @@ uint64_t tctdbfsiz(TCTDB *tdb){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      rv += tcbdbfsiz(idx->db);
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        rv += tcbdbfsiz(idx->db);
+        break;
     }
   }
   TDBUNLOCKMETHOD(tdb);
@@ -1020,7 +1024,7 @@ bool tctdbqryproc(TDBQRY *qry, TDBQRYPROC proc, void *op){
 }
 
 
-/* Get the hint of a query object. */
+/* Get the hint string of a query object. */
 const char *tctdbqryhint(TDBQRY *qry){
   assert(qry);
   return tcxstrptr(qry->hint);
@@ -1040,7 +1044,13 @@ TCLIST *tctdbmetasearch(TDBQRY **qrys, int num, int type){
     for(int i = 0; i < num; i++){
       TDBQRY *qry = qrys[i];
       TCTDB *tdb = qry->tdb;
+      int omax = qry->max;
+      int oskip = qry->skip;
+      if(qry->max < INT_MAX - qry->skip) qry->max += qry->skip;
+      qry->skip = 0;
       TCLIST *res = tctdbqrysearch(qry);
+      qry->max = omax;
+      qry->skip = oskip;
       int rnum = TCLISTNUM(res);
       for(int j = 0; j < rnum; j++){
         const char *pkbuf;
@@ -1062,7 +1072,13 @@ TCLIST *tctdbmetasearch(TDBQRY **qrys, int num, int type){
       tclistdel(res);
     }
   } else if(type == TDBMSISECT){
+    int omax = qrys[0]->max;
+    int oskip = qrys[0]->skip;
+    qrys[0]->max = INT_MAX;
+    qrys[0]->skip = 0;
     TCLIST *res = tctdbqrysearch(qrys[0]);
+    qrys[0]->max = omax;
+    qrys[0]->skip = oskip;
     int rnum = TCLISTNUM(res);
     for(int i = 0; i < rnum; i++){
       const char *pkbuf;
@@ -1078,7 +1094,13 @@ TCLIST *tctdbmetasearch(TDBQRY **qrys, int num, int type){
         tcxstrprintf(qry->hint, "omitted\n");
         continue;
       }
+      omax = qry->max;
+      oskip = qry->skip;
+      qry->max = INT_MAX;
+      qry->skip = 0;
       res = tctdbqrysearch(qry);
+      qry->max = omax;
+      qry->skip = oskip;
       rnum = TCLISTNUM(res);
       TCMAP *nset = tcmapnew2(tclmin(TCMAPRNUM(uset), rnum) + 1);
       for(int j = 0; j < rnum; j++){
@@ -1093,7 +1115,13 @@ TCLIST *tctdbmetasearch(TDBQRY **qrys, int num, int type){
       tclistdel(res);
     }
   } else if(type == TDBMSDIFF){
+    int omax = qrys[0]->max;
+    int oskip = qrys[0]->skip;
+    qrys[0]->max = INT_MAX;
+    qrys[0]->skip = 0;
     TCLIST *res = tctdbqrysearch(qrys[0]);
+    qrys[0]->max = omax;
+    qrys[0]->skip = oskip;
     int rnum = TCLISTNUM(res);
     for(int i = 0; i < rnum; i++){
       const char *pkbuf;
@@ -1109,7 +1137,13 @@ TCLIST *tctdbmetasearch(TDBQRY **qrys, int num, int type){
         tcxstrprintf(qry->hint, "omitted\n");
         continue;
       }
+      omax = qry->max;
+      oskip = qry->skip;
+      qry->max = INT_MAX;
+      qry->skip = 0;
       res = tctdbqrysearch(qry);
+      qry->max = omax;
+      qry->skip = oskip;
       rnum = TCLISTNUM(res);
       for(int j = 0; j < rnum; j++){
         const char *pkbuf;
@@ -1120,15 +1154,17 @@ TCLIST *tctdbmetasearch(TDBQRY **qrys, int num, int type){
       tclistdel(res);
     }
   }
+  int max = qrys[0]->max;
+  int skip = qrys[0]->skip;
   TCLIST *res;
   if(oname && type == TDBMSUNION){
     int rnum = TCMAPRNUM(uset);
-    TDBSORTKEY *keys;
+    TDBSORTREC *keys;
     TCMALLOC(keys, sizeof(*keys) * rnum + 1);
     tcmapiterinit(uset);
     const char *pkbuf;
     int pksiz;
-    TDBSORTKEY *key = keys;
+    TDBSORTREC *key = keys;
     while((pkbuf = tcmapiternext(uset, &pksiz)) != NULL){
       int vsiz;
       const char *vbuf = tcmapiterval(pkbuf, &vsiz);
@@ -1143,30 +1179,42 @@ TCLIST *tctdbmetasearch(TDBQRY **qrys, int num, int type){
       }
       key++;
     }
-    int (*compar)(const TDBSORTKEY *a, const TDBSORTKEY *b) = NULL;
+    int (*compar)(const TDBSORTREC *a, const TDBSORTREC *b) = NULL;
     switch(otype){
-    case TDBQOSTRASC:
-      compar = tdbcmpsortkeystrasc;
-      break;
-    case TDBQOSTRDESC:
-      compar = tdbcmpsortkeystrdesc;
-      break;
-    case TDBQONUMASC:
-      compar = tdbcmpsortkeynumasc;
-      break;
-    case TDBQONUMDESC:
-      compar = tdbcmpsortkeynumdesc;
-      break;
+      case TDBQOSTRASC:
+        compar = tdbcmpsortrecstrasc;
+        break;
+      case TDBQOSTRDESC:
+        compar = tdbcmpsortrecstrdesc;
+        break;
+      case TDBQONUMASC:
+        compar = tdbcmpsortrecnumasc;
+        break;
+      case TDBQONUMDESC:
+        compar = tdbcmpsortrecnumdesc;
+        break;
     }
     if(compar) qsort(keys, rnum, sizeof(*keys), (int (*)(const void *, const void *))compar);
-    res = tclistnew2(rnum);
-    for(int i = 0; i < rnum; i++){
+    res = tclistnew2(tclmin(rnum, max));
+    for(int i = skip; max > 0 && i < rnum; i++){
       key = keys + i;
       TCLISTPUSH(res, key->kbuf, key->ksiz);
+      max--;
     }
     TCFREE(keys);
   } else {
-    res = tcmapkeys(uset);
+    res = tclistnew2(tclmin(tcmaprnum(uset), max));
+    tcmapiterinit(uset);
+    const char *pkbuf;
+    int pksiz;
+    while(max > 0 && (pkbuf = tcmapiternext(uset, &pksiz)) != NULL){
+      if(skip > 0){
+        skip--;
+      } else {
+        TCLISTPUSH(res, pkbuf, pksiz);
+        max--;
+      }
+    }
   }
   tcmapdel(uset);
   TCXSTR *hint = tcxstrnew();
@@ -1237,24 +1285,24 @@ bool tctdbmemsync(TCTDB *tdb, bool phys){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbmemsync(idx->db, phys)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbmemsync(idx->db, phys)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   return !err;
@@ -1446,6 +1494,21 @@ bool tctdbdefrag(TCTDB *tdb, int64_t step){
     return false;
   }
   bool rv = tctdbdefragimpl(tdb, step);
+  TDBUNLOCKMETHOD(tdb);
+  return rv;
+}
+
+
+/* Clear the cache of a table tree database object. */
+bool tctdbcacheclear(TCTDB *tdb){
+  assert(tdb);
+  if(!TDBLOCKMETHOD(tdb, true)) return false;
+  if(!tdb->open){
+    tctdbsetecode(tdb, TCEINVALID, __FILE__, __LINE__, __func__);
+    TDBUNLOCKMETHOD(tdb);
+    return false;
+  }
+  bool rv = tctdbcacheclearimpl(tdb);
   TDBUNLOCKMETHOD(tdb);
   return rv;
 }
@@ -1665,6 +1728,25 @@ int tctdbstrtoindextype(const char *str){
 }
 
 
+/* Convert a string into the meta search type number. */
+int tctdbstrtometasearcytype(const char *str){
+  assert(str);
+  int type = -1;
+  if(!tcstricmp(str, "UNION") || !tcstricmp(str, "OR")){
+    type = TDBMSUNION;
+  } else if(!tcstricmp(str, "ISECT") || !tcstricmp(str, "INTERSECTION") ||
+            !tcstricmp(str, "AND")){
+    type = TDBMSISECT;
+  } else if(!tcstricmp(str, "DIFF") || !tcstricmp(str, "DIFFERENCE") ||
+            !tcstricmp(str, "ANDNOT") || !tcstricmp(str, "NOT")){
+    type = TDBMSDIFF;
+  } else if(tcstrisnum(str)){
+    type = tcatoi(str);
+  }
+  return type;
+}
+
+
 /* Get the count of corresponding records of a query object. */
 int tctdbqrycount(TDBQRY *qry){
   assert(qry);
@@ -1672,7 +1754,7 @@ int tctdbqrycount(TDBQRY *qry){
 }
 
 
-/* Generate a keyword-in-context string from a query object. */
+/* Generate keyword-in-context strings from a query object. */
 TCLIST *tctdbqrykwic(TDBQRY *qry, TCMAP *cols, const char *name, int width, int opts){
   assert(qry && cols && width >= 0);
   TDBCOND *conds = qry->conds;
@@ -1981,26 +2063,26 @@ static bool tctdbcloseimpl(TCTDB *tdb){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
-      tcmapdel(idx->cc);
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
+        tcmapdel(idx->cc);
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbclose(idx->db)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      tcbdbdel(idx->db);
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbclose(idx->db)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        tcbdbdel(idx->db);
+        break;
     }
     TCFREE(idx->name);
   }
@@ -2143,8 +2225,8 @@ static char *tctdbgetonecol(TCTDB *tdb, const void *pkbuf, int pksiz,
 
 /* Add a real number to a column of a record in a table database object.
    `tdb' specifies the table database object.
-   `kbuf' specifies the pointer to the region of the primary key.
-   `ksiz' specifies the size of the region of the primary key.
+   `pkbuf' specifies the pointer to the region of the primary key.
+   `pksiz' specifies the size of the region of the primary key.
    `num' specifies the additional value.
    If successful, the return value is the summation value, else, it is Not-a-Number. */
 static double tctdbaddnumber(TCTDB *tdb, const void *pkbuf, int pksiz, double num){
@@ -2154,7 +2236,7 @@ static double tctdbaddnumber(TCTDB *tdb, const void *pkbuf, int pksiz, double nu
   TCMAP *cols = cbuf ? tcmapload(cbuf, csiz) : tcmapnew2(1);
   if(cbuf){
     const char *vbuf = tcmapget2(cols, TDBNUMCNTCOL);
-    if(vbuf) num += tcatof(vbuf);
+    if(vbuf) num += tctdbatof(vbuf);
     TCFREE(cbuf);
   }
   char numbuf[TDBCOLBUFSIZ];
@@ -2193,24 +2275,24 @@ static bool tctdboptimizeimpl(TCTDB *tdb, int64_t bnum, int8_t apow, int8_t fpow
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      tcmapclear(idx->cc);
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        tcmapclear(idx->cc);
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbvanish(idx->db)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbvanish(idx->db)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   const char *path = tchdbpath(tdb->hdb);
@@ -2279,24 +2361,24 @@ static bool tctdboptimizeimpl(TCTDB *tdb, int64_t bnum, int8_t apow, int8_t fpow
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdboptimize(idx->db, -1, -1, -1, -1, -1, UINT8_MAX)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdboptimize(idx->db, -1, -1, -1, -1, -1, UINT8_MAX)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   return !err;
@@ -2315,24 +2397,24 @@ static bool tctdbvanishimpl(TCTDB *tdb){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      tcmapclear(idx->cc);
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        tcmapclear(idx->cc);
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbvanish(idx->db)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbvanish(idx->db)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   return !err;
@@ -2353,40 +2435,40 @@ static bool tctdbcopyimpl(TCTDB *tdb, const char *path){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     const char *ipath;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(*path == '@'){
-        if(!tcbdbcopy(idx->db, path)){
-          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-          err = true;
-        }
-      } else {
-        ipath = tcbdbpath(idx->db);
-        if(tcstrfwm(ipath, opath)){
-          char *tpath = tcsprintf("%s%s", path, ipath + strlen(opath));
-          if(!tcbdbcopy(idx->db, tpath)){
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(*path == '@'){
+          if(!tcbdbcopy(idx->db, path)){
             tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
             err = true;
           }
-          TCFREE(tpath);
         } else {
-          tctdbsetecode(tdb, TCEMISC, __FILE__, __LINE__, __func__);
-          err = true;
+          ipath = tcbdbpath(idx->db);
+          if(tcstrfwm(ipath, opath)){
+            char *tpath = tcsprintf("%s%s", path, ipath + strlen(opath));
+            if(!tcbdbcopy(idx->db, tpath)){
+              tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+              err = true;
+            }
+            TCFREE(tpath);
+          } else {
+            tctdbsetecode(tdb, TCEMISC, __FILE__, __LINE__, __func__);
+            err = true;
+          }
         }
-      }
-      break;
+        break;
     }
   }
   return !err;
@@ -2406,24 +2488,24 @@ static bool tctdbtranbeginimpl(TCTDB *tdb){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbtranbegin(idx->db)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbtranbegin(idx->db)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   return !err;
@@ -2443,24 +2525,24 @@ static bool tctdbtrancommitimpl(TCTDB *tdb){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbtrancommit(idx->db)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbtrancommit(idx->db)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   return !err;
@@ -2479,24 +2561,24 @@ static bool tctdbtranabortimpl(TCTDB *tdb){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      tcmapclear(idx->cc);
-      break;
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        tcmapclear(idx->cc);
+        break;
     }
   }
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbtranabort(idx->db)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbtranabort(idx->db)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   return !err;
@@ -2529,43 +2611,43 @@ static bool tctdbsetindeximpl(TCTDB *tdb, const char *name, int type){
       }
       if(type == TDBITOPT){
         switch(idx->type){
-        case TDBITTOKEN:
-        case TDBITQGRAM:
-          if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
-          break;
+          case TDBITTOKEN:
+          case TDBITQGRAM:
+            if(!tctdbidxsyncicc(tdb, idx, true)) err = true;
+            break;
         }
         switch(idx->type){
-        case TDBITLEXICAL:
-        case TDBITDECIMAL:
-        case TDBITTOKEN:
-        case TDBITQGRAM:
-          if(!tcbdboptimize(idx->db, -1, -1, -1, -1, -1, UINT8_MAX)){
-            tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-            err = true;
-          }
-          break;
+          case TDBITLEXICAL:
+          case TDBITDECIMAL:
+          case TDBITTOKEN:
+          case TDBITQGRAM:
+            if(!tcbdboptimize(idx->db, -1, -1, -1, -1, -1, UINT8_MAX)){
+              tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+              err = true;
+            }
+            break;
         }
         done = true;
         break;
       }
       switch(idx->type){
-      case TDBITTOKEN:
-      case TDBITQGRAM:
-        tcmapdel(idx->cc);
-        break;
+        case TDBITTOKEN:
+        case TDBITQGRAM:
+          tcmapdel(idx->cc);
+          break;
       }
       switch(idx->type){
-      case TDBITLEXICAL:
-      case TDBITDECIMAL:
-      case TDBITTOKEN:
-      case TDBITQGRAM:
-        path = tcbdbpath(idx->db);
-        if(path && unlink(path)){
-          tctdbsetecode(tdb, TCEUNLINK, __FILE__, __LINE__, __func__);
-          err = true;
-        }
-        tcbdbdel(idx->db);
-        break;
+        case TDBITLEXICAL:
+        case TDBITDECIMAL:
+        case TDBITTOKEN:
+        case TDBITQGRAM:
+          path = tcbdbpath(idx->db);
+          if(path && unlink(path)){
+            tctdbsetecode(tdb, TCEUNLINK, __FILE__, __LINE__, __func__);
+            err = true;
+          }
+          tcbdbdel(idx->db);
+          break;
       }
       TCFREE(idx->name);
       tdb->inum--;
@@ -2605,85 +2687,85 @@ static bool tctdbsetindeximpl(TCTDB *tdb, const char *name, int type){
   if(opts & TDBTTCBS) bopts |= BDBTTCBS;
   if(opts & TDBTEXCODEC) bopts |= BDBTEXCODEC;
   switch(type){
-  case TDBITLEXICAL:
-    idx->db = tcbdbnew();
-    idx->name = tcstrdup(name);
-    tcxstrprintf(pbuf, "%clex", MYEXTCHR);
-    if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
-    if(tdb->mmtx) tcbdbsetmutex(idx->db);
-    if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
-    tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
-    tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
-    tcbdbsetxmsiz(idx->db, bxmsiz);
-    tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
-    tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
-    if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
-      tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+    case TDBITLEXICAL:
+      idx->db = tcbdbnew();
+      idx->name = tcstrdup(name);
+      tcxstrprintf(pbuf, "%clex", MYEXTCHR);
+      if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
+      if(tdb->mmtx) tcbdbsetmutex(idx->db);
+      if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
+      tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
+      tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
+      tcbdbsetxmsiz(idx->db, bxmsiz);
+      tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
+      tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
+      if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
+        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+        err = true;
+      }
+      tdb->inum++;
+      break;
+    case TDBITDECIMAL:
+      idx->db = tcbdbnew();
+      idx->name = tcstrdup(name);
+      tcxstrprintf(pbuf, "%cdec", MYEXTCHR);
+      if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
+      if(tdb->mmtx) tcbdbsetmutex(idx->db);
+      tcbdbsetcmpfunc(idx->db, tccmpdecimal, NULL);
+      if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
+      tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
+      tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
+      tcbdbsetxmsiz(idx->db, bxmsiz);
+      tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
+      tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
+      if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
+        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+        err = true;
+      }
+      tdb->inum++;
+      break;
+    case TDBITTOKEN:
+      idx->db = tcbdbnew();
+      idx->cc = tcmapnew2(TDBIDXICCBNUM);
+      idx->name = tcstrdup(name);
+      tcxstrprintf(pbuf, "%ctok", MYEXTCHR);
+      if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
+      if(tdb->mmtx) tcbdbsetmutex(idx->db);
+      if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
+      tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
+      tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
+      tcbdbsetxmsiz(idx->db, bxmsiz);
+      tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
+      tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
+      if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
+        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+        err = true;
+      }
+      tdb->inum++;
+      break;
+    case TDBITQGRAM:
+      idx->db = tcbdbnew();
+      idx->cc = tcmapnew2(TDBIDXICCBNUM);
+      idx->name = tcstrdup(name);
+      tcxstrprintf(pbuf, "%cqgr", MYEXTCHR);
+      if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
+      if(tdb->mmtx) tcbdbsetmutex(idx->db);
+      if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
+      tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
+      tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
+      tcbdbsetxmsiz(idx->db, bxmsiz);
+      tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
+      tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
+      if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
+        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+        err = true;
+      }
+      tdb->inum++;
+      break;
+    default:
+      tctdbsetecode(tdb, TCEINVALID, __FILE__, __LINE__, __func__);
       err = true;
-    }
-    tdb->inum++;
-    break;
-  case TDBITDECIMAL:
-    idx->db = tcbdbnew();
-    idx->name = tcstrdup(name);
-    tcxstrprintf(pbuf, "%cdec", MYEXTCHR);
-    if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
-    if(tdb->mmtx) tcbdbsetmutex(idx->db);
-    tcbdbsetcmpfunc(idx->db, tccmpdecimal, NULL);
-    if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
-    tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
-    tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
-    tcbdbsetxmsiz(idx->db, bxmsiz);
-    tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
-    tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
-    if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
-      tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-      err = true;
-    }
-    tdb->inum++;
-    break;
-  case TDBITTOKEN:
-    idx->db = tcbdbnew();
-    idx->cc = tcmapnew2(TDBIDXICCBNUM);
-    idx->name = tcstrdup(name);
-    tcxstrprintf(pbuf, "%ctok", MYEXTCHR);
-    if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
-    if(tdb->mmtx) tcbdbsetmutex(idx->db);
-    if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
-    tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
-    tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
-    tcbdbsetxmsiz(idx->db, bxmsiz);
-    tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
-    tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
-    if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
-      tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-      err = true;
-    }
-    tdb->inum++;
-    break;
-  case TDBITQGRAM:
-    idx->db = tcbdbnew();
-    idx->cc = tcmapnew2(TDBIDXICCBNUM);
-    idx->name = tcstrdup(name);
-    tcxstrprintf(pbuf, "%cqgr", MYEXTCHR);
-    if(dbgfd >= 0) tcbdbsetdbgfd(idx->db, dbgfd);
-    if(tdb->mmtx) tcbdbsetmutex(idx->db);
-    if(enc && dec) tcbdbsetcodecfunc(idx->db, enc, encop, dec, decop);
-    tcbdbtune(idx->db, TDBIDXLMEMB, TDBIDXNMEMB, bbnum, -1, -1, bopts);
-    tcbdbsetcache(idx->db, tdb->lcnum, tdb->ncnum);
-    tcbdbsetxmsiz(idx->db, bxmsiz);
-    tcbdbsetdfunit(idx->db, tchdbdfunit(tdb->hdb));
-    tcbdbsetlsmax(idx->db, TDBIDXLSMAX);
-    if(!tcbdbopen(idx->db, TCXSTRPTR(pbuf), bomode)){
-      tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-      err = true;
-    }
-    tdb->inum++;
-    break;
-  default:
-    tctdbsetecode(tdb, TCEINVALID, __FILE__, __LINE__, __func__);
-    err = true;
-    break;
+      break;
   }
   idx->type = type;
   if(!err){
@@ -2698,19 +2780,19 @@ static bool tctdbsetindeximpl(TCTDB *tdb, const char *name, int type){
         const char *pkbuf = TCXSTRPTR(kxstr);
         int pksiz = TCXSTRSIZE(kxstr);
         switch(type){
-        case TDBITLEXICAL:
-        case TDBITDECIMAL:
-          if(!tcbdbput(db, pkbuf, pksiz, pkbuf, pksiz)){
-            tctdbsetecode(tdb, tcbdbecode(db), __FILE__, __LINE__, __func__);
-            err = true;
-          }
-          break;
-        case TDBITTOKEN:
-          if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
-          break;
-        case TDBITQGRAM:
-          if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
-          break;
+          case TDBITLEXICAL:
+          case TDBITDECIMAL:
+            if(!tcbdbput(db, pkbuf, pksiz, pkbuf, pksiz)){
+              tctdbsetecode(tdb, tcbdbecode(db), __FILE__, __LINE__, __func__);
+              err = true;
+            }
+            break;
+          case TDBITTOKEN:
+            if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
+            break;
+          case TDBITQGRAM:
+            if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
+            break;
         }
       } else {
         const char *pkbuf = TCXSTRPTR(kxstr);
@@ -2720,16 +2802,16 @@ static bool tctdbsetindeximpl(TCTDB *tdb, const char *name, int type){
         char *vbuf = tcmaploadone(TCXSTRPTR(vxstr), TCXSTRSIZE(vxstr), name, nsiz, &vsiz);
         if(vbuf){
           switch(type){
-          case TDBITLEXICAL:
-          case TDBITDECIMAL:
-            if(!tctdbidxputone(tdb, idx, pkbuf, pksiz, hash, vbuf, vsiz)) err = true;
-            break;
-          case TDBITTOKEN:
-            if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
-            break;
-          case TDBITQGRAM:
-            if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
-            break;
+            case TDBITLEXICAL:
+            case TDBITDECIMAL:
+              if(!tctdbidxputone(tdb, idx, pkbuf, pksiz, hash, vbuf, vsiz)) err = true;
+              break;
+            case TDBITTOKEN:
+              if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
+              break;
+            case TDBITQGRAM:
+              if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
+              break;
           }
           TCFREE(vbuf);
         }
@@ -2801,79 +2883,79 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
       TDBIDX *idx = idxs + j;
       if(!strcmp(cond->name, idx->name)){
         switch(idx->type){
-        case TDBITLEXICAL:
-          switch(cond->op){
-          case TDBQCSTREQ:
-          case TDBQCSTRBW:
-          case TDBQCSTROREQ:
-            if(!mcond){
-              mcond = cond;
-              midx = idx;
-            } else if(!ncond){
-              ncond = cond;
-              nidx = idx;
+          case TDBITLEXICAL:
+            switch(cond->op){
+              case TDBQCSTREQ:
+              case TDBQCSTRBW:
+              case TDBQCSTROREQ:
+                if(!mcond){
+                  mcond = cond;
+                  midx = idx;
+                } else if(!ncond){
+                  ncond = cond;
+                  nidx = idx;
+                }
+                break;
+              default:
+                if(!scond){
+                  scond = cond;
+                  sidx = idx;
+                }
+                break;
             }
             break;
-          default:
-            if(!scond){
-              scond = cond;
-              sidx = idx;
+          case TDBITDECIMAL:
+            switch(cond->op){
+              case TDBQCNUMEQ:
+              case TDBQCNUMGT:
+              case TDBQCNUMGE:
+              case TDBQCNUMLT:
+              case TDBQCNUMLE:
+              case TDBQCNUMBT:
+              case TDBQCNUMOREQ:
+                if(!mcond){
+                  mcond = cond;
+                  midx = idx;
+                } else if(!ncond){
+                  ncond = cond;
+                  nidx = idx;
+                }
+                break;
+              default:
+                if(!scond){
+                  scond = cond;
+                  sidx = idx;
+                }
+                break;
             }
             break;
-          }
-          break;
-        case TDBITDECIMAL:
-          switch(cond->op){
-          case TDBQCNUMEQ:
-          case TDBQCNUMGT:
-          case TDBQCNUMGE:
-          case TDBQCNUMLT:
-          case TDBQCNUMLE:
-          case TDBQCNUMBT:
-          case TDBQCNUMOREQ:
-            if(!mcond){
-              mcond = cond;
-              midx = idx;
-            } else if(!ncond){
-              ncond = cond;
-              nidx = idx;
+          case TDBITTOKEN:
+            switch(cond->op){
+              case TDBQCSTRAND:
+              case TDBQCSTROR:
+                if(!mcond){
+                  mcond = cond;
+                  midx = idx;
+                } else if(!ncond){
+                  ncond = cond;
+                  nidx = idx;
+                }
+                break;
             }
             break;
-          default:
-            if(!scond){
-              scond = cond;
-              sidx = idx;
+          case TDBITQGRAM:
+            switch(cond->op){
+              case TDBQCFTSPH:
+                if(!mcond){
+                  mcond = cond;
+                  midx = idx;
+                } else if(!ncond){
+                  ncond = cond;
+                  nidx = idx;
+                }
+                break;
             }
             break;
-          }
-          break;
-        case TDBITTOKEN:
-          switch(cond->op){
-          case TDBQCSTRAND:
-          case TDBQCSTROR:
-            if(!mcond){
-              mcond = cond;
-              midx = idx;
-            } else if(!ncond){
-              ncond = cond;
-              nidx = idx;
-            }
-            break;
-          }
-          break;
-        case TDBITQGRAM:
-          switch(cond->op){
-          case TDBQCFTSPH:
-            if(!mcond){
-              mcond = cond;
-              midx = idx;
-            } else if(!ncond){
-              ncond = cond;
-              nidx = idx;
-            }
-            break;
-          }
-          break;
         }
       }
     }
@@ -3027,15 +3109,14 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
       tcxstrprintf(hint, "using an index: \"%s\" asc (NUMEQ)\n", mcond->name);
       BDBCUR *cur = tcbdbcurnew(midx->db);
       if(oname && !strcmp(oname, mcond->name)) oname = NULL;
-      int64_t xnum = tcatoi(expr);
-      char numbuf[TCNUMBUFSIZ];
-      int ksiz = sprintf(numbuf, "\x01%lld", (long long)xnum);
-      tcbdbcurjump(cur, numbuf, ksiz);
+      long double xnum = tctdbatof(expr);
+      tctdbqryidxcurjumpnum(cur, expr, esiz, true);
       bool all = oname != NULL;
       if(!all && max < INT_MAX) tcxstrprintf(hint, "limited matching: %d\n", max);
       const char *kbuf;
+      int ksiz;
       while((all || TCLISTNUM(res) < max) && (kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-        if(tcatoi(kbuf) == xnum){
+        if(tctdbatof(kbuf) == xnum){
           int vsiz;
           const char *vbuf = tcbdbcurval3(cur, &vsiz);
           int nsiz;
@@ -3057,16 +3138,16 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
     } else if(mcond->op == TDBQCNUMGT || mcond->op == TDBQCNUMGE){
       if(oname && !strcmp(oname, mcond->name) && otype == TDBQONUMDESC){
         tcxstrprintf(hint, "using an index: \"%s\" desc (NUMGT/NUMGE)\n", mcond->name);
-        int64_t xnum = tcatoi(expr);
+        long double xnum = tctdbatof(expr);
         BDBCUR *cur = tcbdbcurnew(midx->db);
         tcbdbcurlast(cur);
         if(max < INT_MAX) tcxstrprintf(hint, "limited matching: %d\n", max);
         const char *kbuf;
         int ksiz;
         while(TCLISTNUM(res) < max && (kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-          int64_t knum = tcatoi(kbuf);
+          long double knum = tctdbatof(kbuf);
           if(knum < xnum) break;
-          if(mcond->op == TDBQCNUMGE || tcatoi(kbuf) > xnum){
+          if(knum > xnum || (knum >= xnum && mcond->op == TDBQCNUMGE)){
             int vsiz;
             const char *vbuf = tcbdbcurval3(cur, &vsiz);
             int nsiz;
@@ -3086,16 +3167,16 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
         oname = NULL;
       } else {
         tcxstrprintf(hint, "using an index: \"%s\" asc (NUMGT/NUMGE)\n", mcond->name);
-        int64_t xnum = tcatoi(expr);
+        long double xnum = tctdbatof(expr);
         BDBCUR *cur = tcbdbcurnew(midx->db);
-        char numbuf[TCNUMBUFSIZ];
-        int ksiz = sprintf(numbuf, "\x01%lld", (long long)xnum);
-        tcbdbcurjump(cur, numbuf, ksiz);
+        tctdbqryidxcurjumpnum(cur, expr, esiz, true);
         bool all = oname && (strcmp(oname, mcond->name) || otype != TDBQONUMASC);
         if(!all && max < INT_MAX) tcxstrprintf(hint, "limited matching: %d\n", max);
         const char *kbuf;
+        int ksiz;
         while((all || TCLISTNUM(res) < max) && (kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-          if(mcond->op == TDBQCNUMGE || tcatoi(kbuf) > xnum){
+          long double knum = tctdbatof(kbuf);
+          if(knum > xnum || (knum >= xnum && mcond->op == TDBQCNUMGE)){
             int vsiz;
             const char *vbuf = tcbdbcurval3(cur, &vsiz);
             int nsiz;
@@ -3117,16 +3198,16 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
     } else if(mcond->op == TDBQCNUMLT || mcond->op == TDBQCNUMLE){
       if(oname && !strcmp(oname, mcond->name) && otype == TDBQONUMASC){
         tcxstrprintf(hint, "using an index: \"%s\" asc (NUMLT/NUMLE)\n", mcond->name);
-        int64_t xnum = tcatoi(expr);
+        long double xnum = tctdbatof(expr);
         BDBCUR *cur = tcbdbcurnew(midx->db);
         tcbdbcurfirst(cur);
         if(max < INT_MAX) tcxstrprintf(hint, "limited matching: %d\n", max);
         const char *kbuf;
         int ksiz;
         while(TCLISTNUM(res) < max && (kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-          int64_t knum = tcatoi(kbuf);
+          long double knum = tctdbatof(kbuf);
           if(knum > xnum) break;
-          if(mcond->op == TDBQCNUMLE || tcatoi(kbuf) < xnum){
+          if(knum < xnum || (knum <= xnum && mcond->op == TDBQCNUMLE)){
             int vsiz;
             const char *vbuf = tcbdbcurval3(cur, &vsiz);
             int nsiz;
@@ -3146,16 +3227,16 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
         oname = NULL;
       } else {
         tcxstrprintf(hint, "using an index: \"%s\" desc (NUMLT/NUMLE)\n", mcond->name);
-        int64_t xnum = tcatoi(expr);
+        long double xnum = tctdbatof(expr);
         BDBCUR *cur = tcbdbcurnew(midx->db);
-        char numbuf[TCNUMBUFSIZ];
-        int ksiz = sprintf(numbuf, "\x7f%lld", (long long)xnum);
-        tcbdbcurjumpback(cur, numbuf, ksiz);
+        tctdbqryidxcurjumpnum(cur, expr, esiz, false);
         bool all = oname && (strcmp(oname, mcond->name) || otype != TDBQONUMDESC);
         if(!all && max < INT_MAX) tcxstrprintf(hint, "limited matching: %d\n", max);
         const char *kbuf;
+        int ksiz;
         while((all || TCLISTNUM(res) < max) && (kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-          if(mcond->op == TDBQCNUMLE || tcatoi(kbuf) < xnum){
+          long double knum = tctdbatof(kbuf);
+          if(knum < xnum || (knum <= xnum && mcond->op == TDBQCNUMLE)){
             int vsiz;
             const char *vbuf = tcbdbcurval3(cur, &vsiz);
             int nsiz;
@@ -3183,27 +3264,29 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
       while(*pv != '\0' && *pv != ' ' && *pv != ','){
         pv++;
       }
+      esiz = pv - expr;
       if(*pv != ' ' && *pv != ',') pv = " ";
       pv++;
       while(*pv == ' ' || *pv == ','){
         pv++;
       }
-      int64_t lower = tcatoi(expr);
-      int64_t upper = tcatoi(pv);
+      long double lower = tctdbatof(expr);
+      long double upper = tctdbatof(pv);
       if(lower > upper){
-        int64_t swap = lower;
+        expr = pv;
+        esiz = strlen(expr);
+        long double swap = lower;
         lower = upper;
         upper = swap;
       }
       BDBCUR *cur = tcbdbcurnew(midx->db);
-      char numbuf[TCNUMBUFSIZ];
-      int ksiz = sprintf(numbuf, "\x01%lld", (long long)lower);
-      tcbdbcurjump(cur, numbuf, ksiz);
+      tctdbqryidxcurjumpnum(cur, expr, esiz, true);
       bool all = oname && (strcmp(oname, mcond->name) || otype != TDBQONUMASC);
       if(!all && max < INT_MAX) tcxstrprintf(hint, "limited matching: %d\n", max);
       const char *kbuf;
+      int ksiz;
       while((all || TCLISTNUM(res) < max) && (kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-        if(tcatoi(kbuf) > upper) break;
+        if(tctdbatof(kbuf) > upper) break;
         int vsiz;
         const char *vbuf = tcbdbcurval3(cur, &vsiz);
         int nsiz;
@@ -3233,7 +3316,7 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
       TCLIST *tokens = tcstrsplit(expr, "\t\n\r ,");
       tclistsortex(tokens, tdbcmppkeynumasc);
       for(int i = 1; i < TCLISTNUM(tokens); i++){
-        if(tcatoi(TCLISTVALPTR(tokens, i)) == tcatoi(TCLISTVALPTR(tokens, i - 1))){
+        if(tctdbatof(TCLISTVALPTR(tokens, i)) == tctdbatof(TCLISTVALPTR(tokens, i - 1))){
           TCFREE(tclistremove2(tokens, i));
           i--;
         }
@@ -3254,13 +3337,12 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
         int tsiz;
         TCLISTVAL(token, tokens, i, tsiz);
         if(tsiz < 1) continue;
-        int64_t xnum = tcatoi(token);
-        char numbuf[TCNUMBUFSIZ];
-        int ksiz = sprintf(numbuf, "\x01%lld", (long long)xnum);
-        tcbdbcurjump(cur, numbuf, ksiz);
+        long double xnum = tctdbatof(token);
+        tctdbqryidxcurjumpnum(cur, token, tsiz, true);
         const char *kbuf;
+        int ksiz;
         while((all || TCLISTNUM(res) < max) && (kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-          if(tcatoi(kbuf) == xnum){
+          if(tctdbatof(kbuf) == xnum){
             int vsiz;
             const char *vbuf = tcbdbcurval3(cur, &vsiz);
             int nsiz;
@@ -3357,30 +3439,30 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
       all = false;
     } else if(!strcmp(oname, scond->name)){
       switch(sidx->type){
-      case TDBITLEXICAL:
-        switch(otype){
-        case TDBQOSTRASC:
-          asc = true;
-          all = false;
+        case TDBITLEXICAL:
+          switch(otype){
+            case TDBQOSTRASC:
+              asc = true;
+              all = false;
+              break;
+            case TDBQOSTRDESC:
+              asc = false;
+              all = false;
+              break;
+          }
           break;
-        case TDBQOSTRDESC:
-          asc = false;
-          all = false;
+        case TDBITDECIMAL:
+          switch(otype){
+            case TDBQONUMASC:
+              asc = true;
+              all = false;
+              break;
+            case TDBQONUMDESC:
+              asc = false;
+              all = false;
+              break;
+          }
           break;
-        }
-        break;
-      case TDBITDECIMAL:
-        switch(otype){
-        case TDBQONUMASC:
-          asc = true;
-          all = false;
-          break;
-        case TDBQONUMDESC:
-          asc = false;
-          all = false;
-          break;
-        }
-        break;
       }
     }
     if(asc){
@@ -3441,30 +3523,30 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
       TDBIDX *idx = idxs + i;
       if(strcmp(idx->name, oname)) continue;
       switch(idx->type){
-      case TDBITLEXICAL:
-        switch(otype){
-        case TDBQOSTRASC:
-          oidx = idx;
-          asc = true;
+        case TDBITLEXICAL:
+          switch(otype){
+            case TDBQOSTRASC:
+              oidx = idx;
+              asc = true;
+              break;
+            case TDBQOSTRDESC:
+              oidx = idx;
+              asc = false;
+              break;
+          }
           break;
-        case TDBQOSTRDESC:
-          oidx = idx;
-          asc = false;
+        case TDBITDECIMAL:
+          switch(otype){
+            case TDBQONUMASC:
+              oidx = idx;
+              asc = true;
+              break;
+            case TDBQONUMDESC:
+              oidx = idx;
+              asc = false;
+              break;
+          }
           break;
-        }
-        break;
-      case TDBITDECIMAL:
-        switch(otype){
-        case TDBQONUMASC:
-          oidx = idx;
-          asc = true;
-          break;
-        case TDBQONUMDESC:
-          oidx = idx;
-          asc = false;
-          break;
-        }
-        break;
       }
     }
     if(oidx){
@@ -3621,27 +3703,27 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
     if(*oname == '\0'){
       tcxstrprintf(hint, "sorting the result set: \"%s\"\n", oname);
       switch(otype){
-      case TDBQOSTRASC:
-        tclistsort(res);
-        break;
-      case TDBQOSTRDESC:
-        tclistsort(res);
-        tclistinvert(res);
-        break;
-      case TDBQONUMASC:
-        tclistsortex(res, tdbcmppkeynumasc);
-        break;
-      case TDBQONUMDESC:
-        tclistsortex(res, tdbcmppkeynumdesc);
-        break;
+        case TDBQOSTRASC:
+          tclistsort(res);
+          break;
+        case TDBQOSTRDESC:
+          tclistsort(res);
+          tclistinvert(res);
+          break;
+        case TDBQONUMASC:
+          tclistsortex(res, tdbcmppkeynumasc);
+          break;
+        case TDBQONUMDESC:
+          tclistsortex(res, tdbcmppkeynumdesc);
+          break;
       }
     } else {
       tcxstrprintf(hint, "sorting the result set: \"%s\"\n", oname);
-      TDBSORTKEY *keys;
+      TDBSORTREC *keys;
       TCMALLOC(keys, sizeof(*keys) * rnum + 1);
       int onsiz = strlen(oname);
       for(int i = 0; i < rnum; i++){
-        TDBSORTKEY *key = keys + i;
+        TDBSORTREC *key = keys + i;
         const char *kbuf;
         int ksiz;
         TCLISTVAL(kbuf, res, i, ksiz);
@@ -3658,20 +3740,20 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
         key->vbuf = vbuf;
         key->vsiz = vsiz;
       }
-      int (*compar)(const TDBSORTKEY *a, const TDBSORTKEY *b) = NULL;
+      int (*compar)(const TDBSORTREC *a, const TDBSORTREC *b) = NULL;
       switch(otype){
-      case TDBQOSTRASC:
-        compar = tdbcmpsortkeystrasc;
-        break;
-      case TDBQOSTRDESC:
-        compar = tdbcmpsortkeystrdesc;
-        break;
-      case TDBQONUMASC:
-        compar = tdbcmpsortkeynumasc;
-        break;
-      case TDBQONUMDESC:
-        compar = tdbcmpsortkeynumdesc;
-        break;
+        case TDBQOSTRASC:
+          compar = tdbcmpsortrecstrasc;
+          break;
+        case TDBQOSTRDESC:
+          compar = tdbcmpsortrecstrdesc;
+          break;
+        case TDBQONUMASC:
+          compar = tdbcmpsortrecnumasc;
+          break;
+        case TDBQONUMDESC:
+          compar = tdbcmpsortrecnumdesc;
+          break;
       }
       if(compar){
         if(max <= rnum / 16){
@@ -3682,7 +3764,7 @@ static TCLIST *tctdbqrysearchimpl(TDBQRY *qry){
       }
       TCLIST *nres = tclistnew2(rnum);
       for(int i = 0; i < rnum; i++){
-        TDBSORTKEY *key = keys + i;
+        TDBSORTREC *key = keys + i;
         TCLISTPUSH(nres, key->kbuf, key->ksiz);
         TCFREE(key->vbuf);
       }
@@ -3801,14 +3883,13 @@ static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx){
     tclistdel(tokens);
   } else if(cond->op == TDBQCNUMEQ){
     tcxstrprintf(hint, "using an auxiliary index: \"%s\" asc (NUMEQ)\n", cond->name);
-    int64_t xnum = tcatoi(expr);
+    long double xnum = tctdbatof(expr);
     BDBCUR *cur = tcbdbcurnew(idx->db);
-    char numbuf[TCNUMBUFSIZ];
-    int ksiz = sprintf(numbuf, "\x01%lld", (long long)xnum);
-    tcbdbcurjump(cur, numbuf, ksiz);
+    tctdbqryidxcurjumpnum(cur, expr, esiz, true);
     const char *kbuf;
+    int ksiz;
     while((kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-      if(tcatoi(kbuf) == xnum){
+      if(tctdbatof(kbuf) == xnum){
         int vsiz;
         const char *vbuf = tcbdbcurval3(cur, &vsiz);
         tcmapputkeep(nmap, vbuf, vsiz, "", 0);
@@ -3820,14 +3901,14 @@ static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx){
     tcbdbcurdel(cur);
   } else if(cond->op == TDBQCNUMGT || cond->op == TDBQCNUMGE){
     tcxstrprintf(hint, "using an auxiliary index: \"%s\" asc (NUMGT/NUMGE)\n", cond->name);
-    int64_t xnum = tcatoi(expr);
+    long double xnum = tctdbatof(expr);
     BDBCUR *cur = tcbdbcurnew(idx->db);
-    char numbuf[TCNUMBUFSIZ];
-    int ksiz = sprintf(numbuf, "\x01%lld", (long long)xnum);
-    tcbdbcurjump(cur, numbuf, ksiz);
+    tctdbqryidxcurjumpnum(cur, expr, esiz, true);
     const char *kbuf;
+    int ksiz;
     while((kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-      if(cond->op == TDBQCNUMGE || tcatoi(kbuf) > xnum){
+      long double knum = tctdbatof(kbuf);
+      if(knum > xnum || (knum >= xnum && cond->op == TDBQCNUMGE)){
         int vsiz;
         const char *vbuf = tcbdbcurval3(cur, &vsiz);
         tcmapputkeep(nmap, vbuf, vsiz, "", 0);
@@ -3837,14 +3918,14 @@ static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx){
     tcbdbcurdel(cur);
   } else if(cond->op == TDBQCNUMLT || cond->op == TDBQCNUMLE){
     tcxstrprintf(hint, "using an auxiliary index: \"%s\" desc (NUMLT/NUMLE)\n", cond->name);
-    int64_t xnum = tcatoi(expr);
+    long double xnum = tctdbatof(expr);
     BDBCUR *cur = tcbdbcurnew(idx->db);
-    char numbuf[TCNUMBUFSIZ];
-    int ksiz = sprintf(numbuf, "\x7f%lld", (long long)xnum);
-    tcbdbcurjumpback(cur, numbuf, ksiz);
+    tctdbqryidxcurjumpnum(cur, expr, esiz, false);
     const char *kbuf;
+    int ksiz;
     while((kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-      if(cond->op == TDBQCNUMLE || tcatoi(kbuf) < xnum){
+      long double knum = tctdbatof(kbuf);
+      if(knum < xnum || (knum <= xnum && cond->op == TDBQCNUMLE)){
         int vsiz;
         const char *vbuf = tcbdbcurval3(cur, &vsiz);
         tcmapputkeep(nmap, vbuf, vsiz, "", 0);
@@ -3861,25 +3942,27 @@ static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx){
     while(*pv != '\0' && *pv != ' ' && *pv != ','){
       pv++;
     }
+    esiz = pv - expr;
     if(*pv != ' ' && *pv != ',') pv = " ";
     pv++;
     while(*pv == ' ' || *pv == ','){
       pv++;
     }
-    int64_t lower = tcatoi(expr);
-    int64_t upper = tcatoi(pv);
+    long double lower = tctdbatof(expr);
+    long double upper = tctdbatof(pv);
     if(lower > upper){
-      int64_t swap = lower;
+      expr = pv;
+      esiz = strlen(expr);
+      long double swap = lower;
       lower = upper;
       upper = swap;
     }
     BDBCUR *cur = tcbdbcurnew(idx->db);
-    char numbuf[TCNUMBUFSIZ];
-    int ksiz = sprintf(numbuf, "\x01%lld", (long long)lower);
-    tcbdbcurjump(cur, numbuf, ksiz);
+    tctdbqryidxcurjumpnum(cur, expr, esiz, true);
     const char *kbuf;
+    int ksiz;
     while((kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-      if(tcatoi(kbuf) > upper) break;
+      if(tctdbatof(kbuf) > upper) break;
       int vsiz;
       const char *vbuf = tcbdbcurval3(cur, &vsiz);
       tcmapputkeep(nmap, vbuf, vsiz, "", 0);
@@ -3892,7 +3975,7 @@ static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx){
     TCLIST *tokens = tcstrsplit(expr, "\t\n\r ,");
     tclistsortex(tokens, tdbcmppkeynumasc);
     for(int i = 1; i < TCLISTNUM(tokens); i++){
-      if(tcatoi(TCLISTVALPTR(tokens, i)) == tcatoi(TCLISTVALPTR(tokens, i - 1))){
+      if(tctdbatof(TCLISTVALPTR(tokens, i)) == tctdbatof(TCLISTVALPTR(tokens, i - 1))){
         TCFREE(tclistremove2(tokens, i));
         i--;
       }
@@ -3903,13 +3986,12 @@ static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx){
       int tsiz;
       TCLISTVAL(token, tokens, i, tsiz);
       if(tsiz < 1) continue;
-      int64_t xnum = tcatoi(token);
-      char numbuf[TCNUMBUFSIZ];
-      int ksiz = sprintf(numbuf, "\x01%lld", (long long)xnum);
-      tcbdbcurjump(cur, numbuf, ksiz);
+      long double xnum = tctdbatof(token);
+      tctdbqryidxcurjumpnum(cur, token, tsiz, true);
       const char *kbuf;
+      int ksiz;
       while((kbuf = tcbdbcurkey3(cur, &ksiz)) != NULL){
-        if(tcatoi(kbuf) == xnum){
+        if(tctdbatof(kbuf) == xnum){
           int vsiz;
           const char *vbuf = tcbdbcurval3(cur, &vsiz);
           tcmapputkeep(nmap, vbuf, vsiz, "", 0);
@@ -3942,6 +4024,75 @@ static TCMAP *tctdbqryidxfetch(TDBQRY *qry, TDBCOND *cond, TDBIDX *idx){
   }
   tcxstrprintf(hint, "auxiliary result set size: %lld\n", (long long)TCMAPRNUM(nmap));
   return nmap;
+}
+
+
+/* Convert a string to a real number.
+   `str' specifies the string.
+   The return value is the real number. */
+static long double tctdbatof(const char *str){
+  assert(str);
+  while(*str > '\0' && *str <= ' '){
+    str++;
+  }
+  int sign = 1;
+  if(*str == '-'){
+    str++;
+    sign = -1;
+  } else if(*str == '+'){
+    str++;
+  }
+  if(tcstrifwm(str, "inf")) return HUGE_VALL * sign;
+  if(tcstrifwm(str, "nan")) return nanl("");
+  long double num = 0;
+  int col = 0;
+  while(*str != '\0'){
+    if(*str < '0' || *str > '9') break;
+    num = num * 10 + *str - '0';
+    str++;
+    if(num > 0) col++;
+  }
+  if(*str == '.'){
+    str++;
+    long double fract = 0.0;
+    long double base = 10;
+    while(col < TDBNUMCOLMAX && *str != '\0'){
+      if(*str < '0' || *str > '9') break;
+      fract += (*str - '0') / base;
+      str++;
+      col++;
+      base *= 10;
+    }
+    num += fract;
+  }
+  return num * sign;
+}
+
+
+/* Jump a cursor to the record of a key.
+   `cur' specifies the cursor object.
+   `expr' specifies the expression.
+   `esiz' specifies the size of the expression.
+   `first' specifies whether to jump the first candidate.
+   If successful, the return value is true, else, it is false. */
+static bool tctdbqryidxcurjumpnum(BDBCUR *cur, const char *expr, int esiz, bool first){
+  assert(cur && expr && esiz >= 0);
+  char stack[TCNUMBUFSIZ], *rbuf;
+  if(esiz < sizeof(stack)){
+    rbuf = stack;
+  } else {
+    TCMALLOC(rbuf, esiz + 1);
+  }
+  rbuf[0] = first ? 0x00 : 0x7f;
+  memcpy(rbuf + 1, expr, esiz);
+  bool err = false;
+  if(first){
+    if(!tcbdbcurjump(cur, rbuf, esiz + 1)) err = true;
+  } else {
+    if(!tcbdbcurjumpback(cur, rbuf, esiz + 1)) err = true;
+  }
+  if(rbuf != stack) TCFREE(rbuf);
+  return !err;
 }
 
 
@@ -4025,54 +4176,54 @@ static bool tctdbqrycondmatch(TDBCOND *cond, const char *vbuf, int vsiz){
   assert(cond && vbuf && vsiz >= 0);
   bool hit = false;
   switch(cond->op){
-  case TDBQCSTREQ:
-    hit = vsiz == cond->esiz && !memcmp(vbuf, cond->expr, cond->esiz);
-    break;
-  case TDBQCSTRINC:
-    hit = strstr(vbuf, cond->expr) != NULL;
-    break;
-  case TDBQCSTRBW:
-    hit = tcstrfwm(vbuf, cond->expr);
-    break;
-  case TDBQCSTREW:
-    hit = tcstrbwm(vbuf, cond->expr);
-    break;
-  case TDBQCSTRAND:
-    hit = tctdbqrycondcheckstrand(vbuf, cond->expr);
-    break;
-  case TDBQCSTROR:
-    hit = tctdbqrycondcheckstror(vbuf, cond->expr);
-    break;
-  case TDBQCSTROREQ:
-    hit = tctdbqrycondcheckstroreq(vbuf, cond->expr);
-    break;
-  case TDBQCSTRRX:
-    hit = cond->regex && regexec(cond->regex, vbuf, 0, NULL, 0) == 0;
-    break;
-  case TDBQCNUMEQ:
-    hit = tcatoi(vbuf) == tcatoi(cond->expr);
-    break;
-  case TDBQCNUMGT:
-    hit = tcatoi(vbuf) > tcatoi(cond->expr);
-    break;
-  case TDBQCNUMGE:
-    hit = tcatoi(vbuf) >= tcatoi(cond->expr);
-    break;
-  case TDBQCNUMLT:
-    hit = tcatoi(vbuf) < tcatoi(cond->expr);
-    break;
-  case TDBQCNUMLE:
-    hit = tcatoi(vbuf) <= tcatoi(cond->expr);
-    break;
-  case TDBQCNUMBT:
-    hit = tctdbqrycondchecknumbt(vbuf, cond->expr);
-    break;
-  case TDBQCNUMOREQ:
-    hit = tctdbqrycondchecknumoreq(vbuf, cond->expr);
-    break;
-  case TDBQCFTSPH:
-    hit = tctdbqrycondcheckfts(vbuf, vsiz, cond);
-    break;
+    case TDBQCSTREQ:
+      hit = vsiz == cond->esiz && !memcmp(vbuf, cond->expr, cond->esiz);
+      break;
+    case TDBQCSTRINC:
+      hit = strstr(vbuf, cond->expr) != NULL;
+      break;
+    case TDBQCSTRBW:
+      hit = tcstrfwm(vbuf, cond->expr);
+      break;
+    case TDBQCSTREW:
+      hit = tcstrbwm(vbuf, cond->expr);
+      break;
+    case TDBQCSTRAND:
+      hit = tctdbqrycondcheckstrand(vbuf, cond->expr);
+      break;
+    case TDBQCSTROR:
+      hit = tctdbqrycondcheckstror(vbuf, cond->expr);
+      break;
+    case TDBQCSTROREQ:
+      hit = tctdbqrycondcheckstroreq(vbuf, cond->expr);
+      break;
+    case TDBQCSTRRX:
+      hit = cond->regex && regexec(cond->regex, vbuf, 0, NULL, 0) == 0;
+      break;
+    case TDBQCNUMEQ:
+      hit = tctdbatof(vbuf) == tctdbatof(cond->expr);
+      break;
+    case TDBQCNUMGT:
+      hit = tctdbatof(vbuf) > tctdbatof(cond->expr);
+      break;
+    case TDBQCNUMGE:
+      hit = tctdbatof(vbuf) >= tctdbatof(cond->expr);
+      break;
+    case TDBQCNUMLT:
+      hit = tctdbatof(vbuf) < tctdbatof(cond->expr);
+      break;
+    case TDBQCNUMLE:
+      hit = tctdbatof(vbuf) <= tctdbatof(cond->expr);
+      break;
+    case TDBQCNUMBT:
+      hit = tctdbqrycondchecknumbt(vbuf, cond->expr);
+      break;
+    case TDBQCNUMOREQ:
+      hit = tctdbqrycondchecknumoreq(vbuf, cond->expr);
+      break;
+    case TDBQCFTSPH:
+      hit = tctdbqrycondcheckfts(vbuf, vsiz, cond);
+      break;
   }
   return hit;
 }
@@ -4209,11 +4360,11 @@ static bool tctdbqrycondchecknumbt(const char *vbuf, const char *expr){
   while(*pv == ' ' || *pv == ','){
     pv++;
   }
-  int64_t val = tcatoi(vbuf);
-  int64_t lower = tcatoi(expr);
-  int64_t upper = tcatoi(pv);
+  long double val = tctdbatof(vbuf);
+  long double lower = tctdbatof(expr);
+  long double upper = tctdbatof(pv);
   if(lower > upper){
-    int64_t swap = lower;
+    long double swap = lower;
     lower = upper;
     upper = swap;
   }
@@ -4227,7 +4378,7 @@ static bool tctdbqrycondchecknumbt(const char *vbuf, const char *expr){
    If they matches, the return value is true, else it is false. */
 static bool tctdbqrycondchecknumoreq(const char *vbuf, const char *expr){
   assert(vbuf && expr);
-  int64_t vnum = tcatoi(vbuf);
+  long double vnum = tctdbatof(vbuf);
   const char *sp = expr;
   while(*sp != '\0'){
     while(*sp == ' ' || *sp == ','){
@@ -4237,7 +4388,7 @@ static bool tctdbqrycondchecknumoreq(const char *vbuf, const char *expr){
     while(*ep != '\0' && *ep != ' ' && *ep != ','){
       ep++;
     }
-    if(ep > sp && vnum == tcatoi(sp)) return true;
+    if(ep > sp && vnum == tctdbatof(sp)) return true;
     sp = ep;
   }
   return false;
@@ -4300,6 +4451,7 @@ static bool tctdbqrycondcheckfts(const char *vbuf, int vsiz, TDBCOND *cond){
    The return value is positive if the former is big, negative if the latter is big, 0 if both
    are equivalent. */
 static int tdbcmppkeynumasc(const TCLISTDATUM *a, const TCLISTDATUM *b){
+  assert(a && b);
   return tccmpdecimal(a->ptr, a->size, b->ptr, b->size, NULL);
 }
 
@@ -4310,16 +4462,18 @@ static int tdbcmppkeynumasc(const TCLISTDATUM *a, const TCLISTDATUM *b){
    The return value is positive if the former is big, negative if the latter is big, 0 if both
    are equivalent. */
 static int tdbcmppkeynumdesc(const TCLISTDATUM *a, const TCLISTDATUM *b){
+  assert(a && b);
   return tccmpdecimal(b->ptr, b->size, a->ptr, a->size, NULL);
 }
 
 
-/* Compare two sort keys by string ascending.
+/* Compare two sort records by string ascending.
    `a' specifies a key.
    `b' specifies of the other key.
    The return value is positive if the former is big, negative if the latter is big, 0 if both
    are equivalent. */
-static int tdbcmpsortkeystrasc(const TDBSORTKEY *a, const TDBSORTKEY *b){
+static int tdbcmpsortrecstrasc(const TDBSORTREC *a, const TDBSORTREC *b){
+  assert(a && b);
   if(!a->vbuf){
     if(!b->vbuf) return 0;
     return 1;
@@ -4334,12 +4488,13 @@ static int tdbcmpsortkeystrasc(const TDBSORTKEY *a, const TDBSORTKEY *b){
 }
 
 
-/* Compare two sort keys by string descending.
+/* Compare two sort records by string descending.
    `a' specifies a key.
    `b' specifies of the other key.
    The return value is positive if the former is big, negative if the latter is big, 0 if both
    are equivalent. */
-static int tdbcmpsortkeystrdesc(const TDBSORTKEY *a, const TDBSORTKEY *b){
+static int tdbcmpsortrecstrdesc(const TDBSORTREC *a, const TDBSORTREC *b){
+  assert(a && b);
   if(!a->vbuf){
     if(!b->vbuf) return 0;
     return 1;
@@ -4354,12 +4509,13 @@ static int tdbcmpsortkeystrdesc(const TDBSORTKEY *a, const TDBSORTKEY *b){
 }
 
 
-/* Compare two sort keys by number ascending.
+/* Compare two sort records by number ascending.
    `a' specifies a key.
    `b' specifies of the other key.
    The return value is positive if the former is big, negative if the latter is big, 0 if both
    are equivalent. */
-static int tdbcmpsortkeynumasc(const TDBSORTKEY *a, const TDBSORTKEY *b){
+static int tdbcmpsortrecnumasc(const TDBSORTREC *a, const TDBSORTREC *b){
+  assert(a && b);
   if(!a->vbuf){
     if(!b->vbuf) return 0;
     return 1;
@@ -4368,20 +4524,21 @@ static int tdbcmpsortkeynumasc(const TDBSORTKEY *a, const TDBSORTKEY *b){
     if(!a->vbuf) return 0;
     return -1;
   }
-  int64_t anum = tcatoi(a->vbuf);
-  int64_t bnum = tcatoi(b->vbuf);
+  long double anum = tctdbatof(a->vbuf);
+  long double bnum = tctdbatof(b->vbuf);
   if(anum < bnum) return -1;
   if(anum > bnum) return 1;
   return 0;
 }
 
 
-/* Compare two sort keys by number descending.
+/* Compare two sort records by number descending.
    `a' specifies a key.
    `b' specifies of the other key.
    The return value is positive if the former is big, negative if the latter is big, 0 if both
    are equivalent. */
-static int tdbcmpsortkeynumdesc(const TDBSORTKEY *a, const TDBSORTKEY *b){
+static int tdbcmpsortrecnumdesc(const TDBSORTREC *a, const TDBSORTREC *b){
+  assert(a && b);
   if(!a->vbuf){
     if(!b->vbuf) return 0;
     return 1;
@@ -4390,8 +4547,8 @@ static int tdbcmpsortkeynumdesc(const TDBSORTKEY *a, const TDBSORTKEY *b){
     if(!a->vbuf) return 0;
     return -1;
   }
-  int64_t anum = tcatoi(a->vbuf);
-  int64_t bnum = tcatoi(b->vbuf);
+  long double anum = tctdbatof(a->vbuf);
+  long double bnum = tctdbatof(b->vbuf);
   if(anum < bnum) return 1;
   if(anum > bnum) return -1;
   return 0;
@@ -4436,19 +4593,19 @@ static bool tctdbidxput(TCTDB *tdb, const void *pkbuf, int pksiz, TCMAP *cols){
     memcpy(rbuf, pkbuf, pksiz);
     rbuf[pksiz] = '\0';
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-      if(!tcbdbput(idx->db, pkbuf, pksiz, rbuf, pksiz)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
-    case TDBITTOKEN:
-      if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
-      break;
-    case TDBITQGRAM:
-      if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+        if(!tcbdbput(idx->db, pkbuf, pksiz, rbuf, pksiz)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
+      case TDBITTOKEN:
+        if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
+        break;
+      case TDBITQGRAM:
+        if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, pkbuf, pksiz)) err = true;
+        break;
     }
     if(rbuf != stack) TCFREE(rbuf);
   }
@@ -4462,16 +4619,16 @@ static bool tctdbidxput(TCTDB *tdb, const void *pkbuf, int pksiz, TCMAP *cols){
       TDBIDX *idx = idxs + i;
       if(strcmp(idx->name, kbuf)) continue;
       switch(idx->type){
-      case TDBITLEXICAL:
-      case TDBITDECIMAL:
-        if(!tctdbidxputone(tdb, idx, pkbuf, pksiz, hash, vbuf, vsiz)) err = true;
-        break;
-      case TDBITTOKEN:
-        if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
-        break;
-      case TDBITQGRAM:
-        if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
-        break;
+        case TDBITLEXICAL:
+        case TDBITDECIMAL:
+          if(!tctdbidxputone(tdb, idx, pkbuf, pksiz, hash, vbuf, vsiz)) err = true;
+          break;
+        case TDBITTOKEN:
+          if(!tctdbidxputtoken(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
+          break;
+        case TDBITQGRAM:
+          if(!tctdbidxputqgram(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
+          break;
       }
     }
   }
@@ -4537,6 +4694,10 @@ static bool tctdbidxputtoken(TCTDB *tdb, TDBIDX *idx, const char *pkbuf, int pks
     int c = pkbuf[i];
     if(c >= '0' && c <= '9'){
       pkid = pkid * 10 + c - '0';
+      if(pkid > INT64_MAX){
+        pkid = 0;
+        break;
+      }
     } else {
       pkid = 0;
       break;
@@ -4597,6 +4758,10 @@ static bool tctdbidxputqgram(TCTDB *tdb, TDBIDX *idx, const char *pkbuf, int pks
     int c = pkbuf[i];
     if(c >= '0' && c <= '9'){
       pkid = pkid * 10 + c - '0';
+      if(pkid > INT64_MAX){
+        pkid = 0;
+        break;
+      }
     } else {
       pkid = 0;
       break;
@@ -4661,19 +4826,19 @@ static bool tctdbidxout(TCTDB *tdb, const void *pkbuf, int pksiz, TCMAP *cols){
     memcpy(rbuf, pkbuf, pksiz);
     rbuf[pksiz] = '\0';
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-      if(!tcbdbout(idx->db, pkbuf, pksiz)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
-    case TDBITTOKEN:
-      if(!tctdbidxouttoken(tdb, idx, pkbuf, pksiz, rbuf, pksiz)) err = true;
-      break;
-    case TDBITQGRAM:
-      if(!tctdbidxoutqgram(tdb, idx, pkbuf, pksiz, rbuf, pksiz)) err = true;
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+        if(!tcbdbout(idx->db, pkbuf, pksiz)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
+      case TDBITTOKEN:
+        if(!tctdbidxouttoken(tdb, idx, pkbuf, pksiz, rbuf, pksiz)) err = true;
+        break;
+      case TDBITQGRAM:
+        if(!tctdbidxoutqgram(tdb, idx, pkbuf, pksiz, rbuf, pksiz)) err = true;
+        break;
     }
     if(rbuf != stack) TCFREE(rbuf);
   }
@@ -4687,16 +4852,16 @@ static bool tctdbidxout(TCTDB *tdb, const void *pkbuf, int pksiz, TCMAP *cols){
       TDBIDX *idx = idxs + i;
       if(strcmp(idx->name, kbuf)) continue;
       switch(idx->type){
-      case TDBITLEXICAL:
-      case TDBITDECIMAL:
-        if(!tctdbidxoutone(tdb, idx, pkbuf, pksiz, hash, vbuf, vsiz)) err = true;
-        break;
-      case TDBITTOKEN:
-        if(!tctdbidxouttoken(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
-        break;
-      case TDBITQGRAM:
-        if(!tctdbidxoutqgram(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
-        break;
+        case TDBITLEXICAL:
+        case TDBITDECIMAL:
+          if(!tctdbidxoutone(tdb, idx, pkbuf, pksiz, hash, vbuf, vsiz)) err = true;
+          break;
+        case TDBITTOKEN:
+          if(!tctdbidxouttoken(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
+          break;
+        case TDBITQGRAM:
+          if(!tctdbidxoutqgram(tdb, idx, pkbuf, pksiz, vbuf, vsiz)) err = true;
+          break;
       }
     }
   }
@@ -4782,6 +4947,10 @@ static bool tctdbidxouttoken(TCTDB *tdb, TDBIDX *idx, const char *pkbuf, int pks
     int c = pkbuf[i];
     if(c >= '0' && c <= '9'){
       pkid = pkid * 10 + c - '0';
+      if(pkid > INT64_MAX){
+        pkid = 0;
+        break;
+      }
     } else {
       pkid = 0;
       break;
@@ -4894,6 +5063,10 @@ static bool tctdbidxoutqgram(TCTDB *tdb, TDBIDX *idx, const char *pkbuf, int pks
     int c = pkbuf[i];
     if(c >= '0' && c <= '9'){
       pkid = pkid * 10 + c - '0';
+      if(pkid > INT64_MAX){
+        pkid = 0;
+        break;
+      }
     } else {
       pkid = 0;
       break;
@@ -5858,6 +6031,7 @@ static TDBFTSUNIT *tctdbftsparseexpr(const char *expr, int esiz, int op, int *np
    `step' specifie the number of steps.
    If successful, the return value is true, else, it is false. */
 static bool tctdbdefragimpl(TCTDB *tdb, int64_t step){
+  assert(tdb);
   bool err = false;
   TCHDB *hdb = tdb->hdb;
   TDBIDX *idxs = tdb->idxs;
@@ -5866,15 +6040,43 @@ static bool tctdbdefragimpl(TCTDB *tdb, int64_t step){
   for(int i = 0; i < inum; i++){
     TDBIDX *idx = idxs + i;
     switch(idx->type){
-    case TDBITLEXICAL:
-    case TDBITDECIMAL:
-    case TDBITTOKEN:
-    case TDBITQGRAM:
-      if(!tcbdbdefrag(idx->db, step)){
-        tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
-        err = true;
-      }
-      break;
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbdefrag(idx->db, step)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
+    }
+  }
+  return !err;
+}
+
+
+/* Clear the cache of a table tree database object.
+   `tdb' specifies the table tree database object.
+   If successful, the return value is true, else, it is false. */
+static bool tctdbcacheclearimpl(TCTDB *tdb){
+  assert(tdb);
+  bool err = false;
+  TCHDB *hdb = tdb->hdb;
+  TDBIDX *idxs = tdb->idxs;
+  int inum = tdb->inum;
+  if(!tchdbcacheclear(hdb)) err = true;
+  for(int i = 0; i < inum; i++){
+    TDBIDX *idx = idxs + i;
+    switch(idx->type){
+      case TDBITLEXICAL:
+      case TDBITDECIMAL:
+      case TDBITTOKEN:
+      case TDBITQGRAM:
+        if(!tcbdbcacheclear(idx->db)){
+          tctdbsetecode(tdb, tcbdbecode(idx->db), __FILE__, __LINE__, __func__);
+          err = true;
+        }
+        break;
     }
   }
   return !err;

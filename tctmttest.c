@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The test cases of the table database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -117,7 +117,7 @@ int main(int argc, char **argv){
     usage();
   }
   if(rv != 0){
-    printf("FAILED:");
+    printf("FAILED: TCRNDSEED=%u PID=%d", g_randseed, (int)getpid());
     for(int i = 0; i < argc; i++){
       printf(" %s", argv[i]);
     }
@@ -1039,7 +1039,11 @@ static void *threadwrite(void *targ){
     char vbuf[RECBUFSIZ*5];
     int vsiz = sprintf(vbuf, "%d", uid);
     tcmapput(cols, "str", 3, vbuf, vsiz);
-    vsiz = sprintf(vbuf, "%d", myrand(i) + 1);
+    if(myrand(3) == 0){
+      vsiz = sprintf(vbuf, "%.2f", (myrand(i * 100) + 1) / 100.0);
+    } else {
+      vsiz = sprintf(vbuf, "%d", myrand(i) + 1);
+    }
     tcmapput(cols, "num", 3, vbuf, vsiz);
     vsiz = sprintf(vbuf, "%d", myrand(32) + 1);
     tcmapput(cols, "type", 4, vbuf, vsiz);
@@ -1142,7 +1146,11 @@ static void *threadwicked(void *targ){
     char vbuf[RECBUFSIZ*5];
     int vsiz = sprintf(vbuf, "%d", id);
     tcmapput(cols, "str", 3, vbuf, vsiz);
-    vsiz = sprintf(vbuf, "%d", myrand(i) + 1);
+    if(myrand(3) == 0){
+      vsiz = sprintf(vbuf, "%.2f", (myrand(i * 100) + 1) / 100.0);
+    } else {
+      vsiz = sprintf(vbuf, "%d", myrand(i) + 1);
+    }
     tcmapput(cols, "num", 3, vbuf, vsiz);
     vsiz = sprintf(vbuf, "%d", myrand(32) + 1);
     tcmapput(cols, "type", 4, vbuf, vsiz);
@@ -1168,252 +1176,256 @@ static void *threadwicked(void *targ){
     TCMAP *ncols;
     TDBQRY *qry;
     switch(myrand(17)){
-    case 0:
-      if(id == 0) iputchar('0');
-      if(!tctdbput(tdb, pkbuf, pksiz, cols)){
-        eprint(tdb, __LINE__, "tctdbput");
-        err = true;
-      }
-      break;
-    case 1:
-      if(id == 0) iputchar('1');
-      cbuf = tcstrjoin4(cols, &csiz);
-      if(!tctdbput2(tdb, pkbuf, pksiz, cbuf, csiz)){
-        eprint(tdb, __LINE__, "tctdbput2");
-        err = true;
-      }
-      tcfree(cbuf);
-      break;
-    case 2:
-      if(id == 0) iputchar('2');
-      cbuf = tcstrjoin3(cols, '\t');
-      if(!tctdbput3(tdb, pkbuf, cbuf)){
-        eprint(tdb, __LINE__, "tctdbput3");
-        err = true;
-      }
-      tcfree(cbuf);
-      break;
-    case 3:
-      if(id == 0) iputchar('3');
-      if(!tctdbputkeep(tdb, pkbuf, pksiz, cols) && tctdbecode(tdb) != TCEKEEP){
-        eprint(tdb, __LINE__, "tctdbputkeep");
-        err = true;
-      }
-      break;
-    case 4:
-      if(id == 0) iputchar('4');
-      cbuf = tcstrjoin4(cols, &csiz);
-      if(!tctdbputkeep2(tdb, pkbuf, pksiz, cbuf, csiz) && tctdbecode(tdb) != TCEKEEP){
-        eprint(tdb, __LINE__, "tctdbputkeep2");
-        err = true;
-      }
-      tcfree(cbuf);
-      break;
-    case 5:
-      if(id == 0) iputchar('5');
-      cbuf = tcstrjoin3(cols, '\t');
-      if(!tctdbputkeep3(tdb, pkbuf, cbuf) && tctdbecode(tdb) != TCEKEEP){
-        eprint(tdb, __LINE__, "tctdbputkeep3");
-        err = true;
-      }
-      tcfree(cbuf);
-      break;
-    case 6:
-      if(id == 0) iputchar('6');
-      if(!tctdbputcat(tdb, pkbuf, pksiz, cols)){
-        eprint(tdb, __LINE__, "tctdbputcat");
-        err = true;
-      }
-      break;
-    case 7:
-      if(id == 0) iputchar('7');
-      cbuf = tcstrjoin4(cols, &csiz);
-      if(!tctdbputcat2(tdb, pkbuf, pksiz, cbuf, csiz)){
-        eprint(tdb, __LINE__, "tctdbputcat2");
-        err = true;
-      }
-      tcfree(cbuf);
-      break;
-    case 8:
-      if(id == 0) iputchar('8');
-      cbuf = tcstrjoin3(cols, '\t');
-      if(!tctdbputcat3(tdb, pkbuf, cbuf)){
-        eprint(tdb, __LINE__, "tctdbputcat3");
-        err = true;
-      }
-      tcfree(cbuf);
-      break;
-    case 9:
-      if(id == 0) iputchar('9');
-      if(myrand(2) == 0){
-        if(!tctdbout(tdb, pkbuf, pksiz) && tctdbecode(tdb) != TCENOREC){
-          eprint(tdb, __LINE__, "tctdbout");
+      case 0:
+        if(id == 0) iputchar('0');
+        if(!tctdbput(tdb, pkbuf, pksiz, cols)){
+          eprint(tdb, __LINE__, "tctdbput");
           err = true;
         }
-      }
-      break;
-    case 10:
-      if(id == 0) iputchar('A');
-      if(myrand(2) == 0){
-        if(!tctdbout2(tdb, pkbuf) && tctdbecode(tdb) != TCENOREC){
-          eprint(tdb, __LINE__, "tctdbout2");
+        break;
+      case 1:
+        if(id == 0) iputchar('1');
+        cbuf = tcstrjoin4(cols, &csiz);
+        if(!tctdbput2(tdb, pkbuf, pksiz, cbuf, csiz)){
+          eprint(tdb, __LINE__, "tctdbput2");
           err = true;
         }
-      }
-      break;
-    case 11:
-      if(id == 0) iputchar('B');
-      ncols = tctdbget(tdb, pkbuf, pksiz);
-      if(ncols){
-        tcmapdel(ncols);
-      } else if(tctdbecode(tdb) != TCENOREC){
-        eprint(tdb, __LINE__, "tctdbget");
-        err = true;
-      }
-      break;
-    case 12:
-      if(id == 0) iputchar('C');
-      cbuf = tctdbget2(tdb, pkbuf, pksiz, &csiz);
-      if(cbuf){
         tcfree(cbuf);
-      } else if(tctdbecode(tdb) != TCENOREC){
-        eprint(tdb, __LINE__, "tctdbget2");
-        err = true;
-      }
-      break;
-    case 13:
-      if(id == 0) iputchar('D');
-      cbuf = tctdbget3(tdb, pkbuf);
-      if(cbuf){
-        tcfree(cbuf);
-      } else if(tctdbecode(tdb) != TCENOREC){
-        eprint(tdb, __LINE__, "tctdbget3");
-        err = true;
-      }
-      break;
-    case 14:
-      if(id == 0) iputchar('E');
-      if(myrand(rnum / 50) == 0){
-        if(!tctdbiterinit(tdb)){
-          eprint(tdb, __LINE__, "tctdbiterinit");
+        break;
+      case 2:
+        if(id == 0) iputchar('2');
+        cbuf = tcstrjoin3(cols, '\t');
+        if(!tctdbput3(tdb, pkbuf, cbuf)){
+          eprint(tdb, __LINE__, "tctdbput3");
           err = true;
         }
-      }
-      for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
-        int iksiz;
-        char *ikbuf = tctdbiternext(tdb, &iksiz);
-        if(ikbuf){
-          tcfree(ikbuf);
-        } else {
-          int ecode = tctdbecode(tdb);
-          if(ecode != TCEINVALID && ecode != TCENOREC){
-            eprint(tdb, __LINE__, "tctdbiternext");
-            err = true;
-          }
+        tcfree(cbuf);
+        break;
+      case 3:
+        if(id == 0) iputchar('3');
+        if(!tctdbputkeep(tdb, pkbuf, pksiz, cols) && tctdbecode(tdb) != TCEKEEP){
+          eprint(tdb, __LINE__, "tctdbputkeep");
+          err = true;
         }
-      }
-      break;
-    case 15:
-      if(id == 0) iputchar('F');
-      qry = tctdbqrynew(tdb);
-      if(myrand(10) != 0){
-        char expr[RECBUFSIZ];
-        sprintf(expr, "%d", myrand(i) + 1);
-        switch(myrand(6)){
-        default:
-          tctdbqryaddcond(qry, "str", TDBQCSTREQ, expr);
-          break;
-        case 1:
-          tctdbqryaddcond(qry, "str", TDBQCSTRBW, expr);
-          break;
-        case 2:
-          tctdbqryaddcond(qry, "str", TDBQCSTROREQ, expr);
-          break;
-        case 3:
-          tctdbqryaddcond(qry, "num", TDBQCNUMEQ, expr);
-          break;
-        case 4:
-          tctdbqryaddcond(qry, "num", TDBQCNUMGT, expr);
-          break;
-        case 5:
-          tctdbqryaddcond(qry, "num", TDBQCNUMLT, expr);
-          break;
+        break;
+      case 4:
+        if(id == 0) iputchar('4');
+        cbuf = tcstrjoin4(cols, &csiz);
+        if(!tctdbputkeep2(tdb, pkbuf, pksiz, cbuf, csiz) && tctdbecode(tdb) != TCEKEEP){
+          eprint(tdb, __LINE__, "tctdbputkeep2");
+          err = true;
         }
-        switch(myrand(5)){
-        case 0:
-          tctdbqrysetorder(qry, "str", TDBQOSTRASC);
-          break;
-        case 1:
-          tctdbqrysetorder(qry, "str", TDBQOSTRDESC);
-          break;
-        case 2:
-          tctdbqrysetorder(qry, "num", TDBQONUMASC);
-          break;
-        case 3:
-          tctdbqrysetorder(qry, "num", TDBQONUMDESC);
-          break;
+        tcfree(cbuf);
+        break;
+      case 5:
+        if(id == 0) iputchar('5');
+        cbuf = tcstrjoin3(cols, '\t');
+        if(!tctdbputkeep3(tdb, pkbuf, cbuf) && tctdbecode(tdb) != TCEKEEP){
+          eprint(tdb, __LINE__, "tctdbputkeep3");
+          err = true;
         }
-        tctdbqrysetlimit(qry, 10, myrand(10));
-      } else {
-        int cnum = myrand(4);
-        if(cnum < 1 && myrand(5) != 0) cnum = 1;
-        for(int j = 0; j < cnum; j++){
-          const char *name = names[myrand(sizeof(names) / sizeof(*names))];
-          int op = ops[myrand(sizeof(ops) / sizeof(*ops))];
-          if(myrand(10) == 0) op = ftsops[myrand(sizeof(ftsops) / sizeof(*ftsops))];
-          if(myrand(20) == 0) op |= TDBQCNEGATE;
-          if(myrand(20) == 0) op |= TDBQCNOIDX;
-          char expr[RECBUFSIZ*3];
-          char *wp = expr;
-          wp += sprintf(expr, "%d", myrand(i));
-          if(myrand(10) == 0) wp += sprintf(wp, ",%d", myrand(i));
-          if(myrand(10) == 0) wp += sprintf(wp, ",%d", myrand(i));
-          tctdbqryaddcond(qry, name, op, expr);
+        tcfree(cbuf);
+        break;
+      case 6:
+        if(id == 0) iputchar('6');
+        if(!tctdbputcat(tdb, pkbuf, pksiz, cols)){
+          eprint(tdb, __LINE__, "tctdbputcat");
+          err = true;
         }
-        if(myrand(3) != 0){
-          const char *name = names[myrand(sizeof(names) / sizeof(*names))];
-          int type = types[myrand(sizeof(types) / sizeof(*types))];
-          tctdbqrysetorder(qry, name, type);
+        break;
+      case 7:
+        if(id == 0) iputchar('7');
+        cbuf = tcstrjoin4(cols, &csiz);
+        if(!tctdbputcat2(tdb, pkbuf, pksiz, cbuf, csiz)){
+          eprint(tdb, __LINE__, "tctdbputcat2");
+          err = true;
         }
-        if(myrand(3) != 0) tctdbqrysetlimit(qry, myrand(i), myrand(10));
-      }
-      if(myrand(10) == 0){
-        TCLIST *res = tctdbqrysearch(qry);
-        tclistdel(res);
-      }
-      tctdbqrydel(qry);
-      break;
-    default:
-      if(id == 0) iputchar('@');
-      if(tctdbtranbegin(tdb)){
+        tcfree(cbuf);
+        break;
+      case 8:
+        if(id == 0) iputchar('8');
+        cbuf = tcstrjoin3(cols, '\t');
+        if(!tctdbputcat3(tdb, pkbuf, cbuf)){
+          eprint(tdb, __LINE__, "tctdbputcat3");
+          err = true;
+        }
+        tcfree(cbuf);
+        break;
+      case 9:
+        if(id == 0) iputchar('9');
         if(myrand(2) == 0){
-          if(!tctdbput(tdb, pkbuf, pksiz, cols)){
-            eprint(tdb, __LINE__, "tctdbput");
-            err = true;
-          }
-        } else {
           if(!tctdbout(tdb, pkbuf, pksiz) && tctdbecode(tdb) != TCENOREC){
             eprint(tdb, __LINE__, "tctdbout");
             err = true;
           }
         }
+        break;
+      case 10:
+        if(id == 0) iputchar('A');
         if(myrand(2) == 0){
-          if(!tctdbtranabort(tdb)){
-            eprint(tdb, __LINE__, "tctdbtranabort");
-            err = true;
-          }
-        } else {
-          if(!tctdbtrancommit(tdb)){
-            eprint(tdb, __LINE__, "tctdbtrancommit");
+          if(!tctdbout2(tdb, pkbuf) && tctdbecode(tdb) != TCENOREC){
+            eprint(tdb, __LINE__, "tctdbout2");
             err = true;
           }
         }
-      } else {
-        eprint(tdb, __LINE__, "tctdbtranbegin");
-        err = true;
-      }
-      if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
-      break;
+        break;
+      case 11:
+        if(id == 0) iputchar('B');
+        ncols = tctdbget(tdb, pkbuf, pksiz);
+        if(ncols){
+          tcmapdel(ncols);
+        } else if(tctdbecode(tdb) != TCENOREC){
+          eprint(tdb, __LINE__, "tctdbget");
+          err = true;
+        }
+        break;
+      case 12:
+        if(id == 0) iputchar('C');
+        cbuf = tctdbget2(tdb, pkbuf, pksiz, &csiz);
+        if(cbuf){
+          tcfree(cbuf);
+        } else if(tctdbecode(tdb) != TCENOREC){
+          eprint(tdb, __LINE__, "tctdbget2");
+          err = true;
+        }
+        break;
+      case 13:
+        if(id == 0) iputchar('D');
+        cbuf = tctdbget3(tdb, pkbuf);
+        if(cbuf){
+          tcfree(cbuf);
+        } else if(tctdbecode(tdb) != TCENOREC){
+          eprint(tdb, __LINE__, "tctdbget3");
+          err = true;
+        }
+        break;
+      case 14:
+        if(id == 0) iputchar('E');
+        if(myrand(rnum / 50) == 0){
+          if(!tctdbiterinit(tdb)){
+            eprint(tdb, __LINE__, "tctdbiterinit");
+            err = true;
+          }
+        }
+        for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
+          int iksiz;
+          char *ikbuf = tctdbiternext(tdb, &iksiz);
+          if(ikbuf){
+            tcfree(ikbuf);
+          } else {
+            int ecode = tctdbecode(tdb);
+            if(ecode != TCEINVALID && ecode != TCENOREC){
+              eprint(tdb, __LINE__, "tctdbiternext");
+              err = true;
+            }
+          }
+        }
+        break;
+      case 15:
+        if(id == 0) iputchar('F');
+        qry = tctdbqrynew(tdb);
+        if(myrand(10) != 0){
+          char expr[RECBUFSIZ];
+          sprintf(expr, "%d", myrand(i) + 1);
+          switch(myrand(6)){
+            default:
+              tctdbqryaddcond(qry, "str", TDBQCSTREQ, expr);
+              break;
+            case 1:
+              tctdbqryaddcond(qry, "str", TDBQCSTRBW, expr);
+              break;
+            case 2:
+              tctdbqryaddcond(qry, "str", TDBQCSTROREQ, expr);
+              break;
+            case 3:
+              tctdbqryaddcond(qry, "num", TDBQCNUMEQ, expr);
+              break;
+            case 4:
+              tctdbqryaddcond(qry, "num", TDBQCNUMGT, expr);
+              break;
+            case 5:
+              tctdbqryaddcond(qry, "num", TDBQCNUMLT, expr);
+              break;
+          }
+          switch(myrand(5)){
+            case 0:
+              tctdbqrysetorder(qry, "str", TDBQOSTRASC);
+              break;
+            case 1:
+              tctdbqrysetorder(qry, "str", TDBQOSTRDESC);
+              break;
+            case 2:
+              tctdbqrysetorder(qry, "num", TDBQONUMASC);
+              break;
+            case 3:
+              tctdbqrysetorder(qry, "num", TDBQONUMDESC);
+              break;
+          }
+          tctdbqrysetlimit(qry, 10, myrand(10));
+        } else {
+          int cnum = myrand(4);
+          if(cnum < 1 && myrand(5) != 0) cnum = 1;
+          for(int j = 0; j < cnum; j++){
+            const char *name = names[myrand(sizeof(names) / sizeof(*names))];
+            int op = ops[myrand(sizeof(ops) / sizeof(*ops))];
+            if(myrand(10) == 0) op = ftsops[myrand(sizeof(ftsops) / sizeof(*ftsops))];
+            if(myrand(20) == 0) op |= TDBQCNEGATE;
+            if(myrand(20) == 0) op |= TDBQCNOIDX;
+            char expr[RECBUFSIZ*3];
+            char *wp = expr;
+            if(myrand(3) == 0){
+              wp += sprintf(expr, "%f", myrand(i * 100) / 100.0);
+            } else {
+              wp += sprintf(expr, "%d", myrand(i));
+            }
+            if(myrand(10) == 0) wp += sprintf(wp, ",%d", myrand(i));
+            if(myrand(10) == 0) wp += sprintf(wp, ",%d", myrand(i));
+            tctdbqryaddcond(qry, name, op, expr);
+          }
+          if(myrand(3) != 0){
+            const char *name = names[myrand(sizeof(names) / sizeof(*names))];
+            int type = types[myrand(sizeof(types) / sizeof(*types))];
+            tctdbqrysetorder(qry, name, type);
+          }
+          if(myrand(3) != 0) tctdbqrysetlimit(qry, myrand(i), myrand(10));
+        }
+        if(myrand(10) == 0){
+          TCLIST *res = tctdbqrysearch(qry);
+          tclistdel(res);
+        }
+        tctdbqrydel(qry);
+        break;
+      default:
+        if(id == 0) iputchar('@');
+        if(tctdbtranbegin(tdb)){
+          if(myrand(2) == 0){
+            if(!tctdbput(tdb, pkbuf, pksiz, cols)){
+              eprint(tdb, __LINE__, "tctdbput");
+              err = true;
+            }
+          } else {
+            if(!tctdbout(tdb, pkbuf, pksiz) && tctdbecode(tdb) != TCENOREC){
+              eprint(tdb, __LINE__, "tctdbout");
+              err = true;
+            }
+          }
+          if(myrand(2) == 0){
+            if(!tctdbtranabort(tdb)){
+              eprint(tdb, __LINE__, "tctdbtranabort");
+              err = true;
+            }
+          } else {
+            if(!tctdbtrancommit(tdb)){
+              eprint(tdb, __LINE__, "tctdbtrancommit");
+              err = true;
+            }
+          }
+        } else {
+          eprint(tdb, __LINE__, "tctdbtranbegin");
+          err = true;
+        }
+        if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
+        break;
     }
     tcmapdel(cols);
     if(id == 0){
@@ -1452,7 +1464,11 @@ static void *threadtypical(void *targ){
       char vbuf[RECBUFSIZ*5];
       int vsiz = sprintf(vbuf, "%d", id);
       tcmapput(cols, "str", 3, vbuf, vsiz);
-      vsiz = sprintf(vbuf, "%d", myrand(i) + 1);
+      if(myrand(3) == 0){
+        vsiz = sprintf(vbuf, "%.2f", (myrand(i * 100) + 1) / 100.0);
+      } else {
+        vsiz = sprintf(vbuf, "%d", myrand(i) + 1);
+      }
       tcmapput(cols, "num", 3, vbuf, vsiz);
       vsiz = sprintf(vbuf, "%d", myrand(32) + 1);
       tcmapput(cols, "type", 4, vbuf, vsiz);
@@ -1510,24 +1526,24 @@ static void *threadtypical(void *targ){
       char expr[RECBUFSIZ];
       sprintf(expr, "%d", myrand(i) + 1);
       switch(myrand(6) * 1){
-      default:
-        tctdbqryaddcond(qry, "str", TDBQCSTREQ, expr);
-        break;
-      case 1:
-        tctdbqryaddcond(qry, "str", TDBQCSTRBW, expr);
-        break;
-      case 2:
-        tctdbqryaddcond(qry, "str", TDBQCSTROREQ, expr);
-        break;
-      case 3:
-        tctdbqryaddcond(qry, "num", TDBQCNUMEQ, expr);
-        break;
-      case 4:
-        tctdbqryaddcond(qry, "num", TDBQCNUMGT, expr);
-        break;
-      case 5:
-        tctdbqryaddcond(qry, "num", TDBQCNUMLT, expr);
-        break;
+        default:
+          tctdbqryaddcond(qry, "str", TDBQCSTREQ, expr);
+          break;
+        case 1:
+          tctdbqryaddcond(qry, "str", TDBQCSTRBW, expr);
+          break;
+        case 2:
+          tctdbqryaddcond(qry, "str", TDBQCSTROREQ, expr);
+          break;
+        case 3:
+          tctdbqryaddcond(qry, "num", TDBQCNUMEQ, expr);
+          break;
+        case 4:
+          tctdbqryaddcond(qry, "num", TDBQCNUMGT, expr);
+          break;
+        case 5:
+          tctdbqryaddcond(qry, "num", TDBQCNUMLT, expr);
+          break;
       }
       tctdbqrysetlimit(qry, 10, myrand(5) * 10);
       TCLIST *res = tctdbqrysearch(qry);

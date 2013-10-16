@@ -1,4 +1,4 @@
-.TH "TCUTIL" 3 "2009-06-21" "Man Page" "Tokyo Cabinet"
+.TH "TCUTIL" 3 "2012-08-18" "Man Page" "Tokyo Cabinet"
 
 .SH NAME
 tcutil \- the utility API
@@ -3021,6 +3021,32 @@ The return value is the new tree object under the memory pool.
 .RE
 .RE
 .PP
+The function `tcmpoolpop' is used in order to remove the most recently installed cleanup handler of a memory pool object.
+.PP
+.RS
+.br
+\fBvoid tcmpoolpop(TCMPOOL *\fImpool\fB, bool \fIexe\fB);\fR
+.RS
+`\fImpool\fR' specifies the memory pool object.
+.RE
+.RS
+`\fIexe\fR' specifies whether to execute the destructor of the removed handler.
+.RE
+.RE
+.PP
+The function `tcmpoolclear' is used in order to remove all cleanup handler of a memory pool object.
+.PP
+.RS
+.br
+\fBvoid tcmpoolclear(TCMPOOL *\fImpool\fB, bool \fIexe\fB);\fR
+.RS
+`\fImpool\fR' specifies the memory pool object.
+.RE
+.RS
+`\fIexe\fR' specifies whether to execute the destructors of the removed handlers.
+.RE
+.RE
+.PP
 The function `tcmpoolglobal' is used in order to get the global memory pool object.
 .PP
 .RS
@@ -3345,7 +3371,7 @@ The function `tcstrucstoutf' is used in order to convert a UCS\-2 array into a U
 .PP
 .RS
 .br
-\fBvoid tcstrucstoutf(const uint16_t *\fIary\fB, int \fInum\fB, char *\fIstr\fB);\fR
+\fBint tcstrucstoutf(const uint16_t *\fIary\fB, int \fInum\fB, char *\fIstr\fB);\fR
 .RS
 `\fIary\fR' specifies the array of UCS\-2 codes.
 .RE
@@ -3481,19 +3507,41 @@ Because the region of the return value is allocated with the `malloc' call, it s
 .RE
 .RE
 .PP
-The function `tcmd5hash' is used in order to get the MD5 hash value of a record.
+The function `tcmd5hash' is used in order to get the MD5 hash value of a serial object.
 .PP
 .RS
 .br
 \fBvoid tcmd5hash(const void *\fIptr\fB, int \fIsize\fB, char *\fIbuf\fB);\fR
 .RS
-`\fIptr\fR' specifies the pointer to the region of the record.
+`\fIptr\fR' specifies the pointer to the region.
 .RE
 .RS
 `\fIsize\fR' specifies the size of the region.
 .RE
 .RS
 `\fIbuf\fR' specifies the pointer to the region into which the result string is written.  The size of the buffer should be equal to or more than 48 bytes.
+.RE
+.RE
+.PP
+The function `tcarccipher' is used in order to cipher or decipher a serial object with the Arcfour stream cipher.
+.PP
+.RS
+.br
+\fBvoid tcarccipher(const void *\fIptr\fB, int \fIsize\fB, const void *\fIkbuf\fB, int \fIksiz\fB, void *\fIobuf\fB);\fR
+.RS
+`\fIptr\fR' specifies the pointer to the region.
+.RE
+.RS
+`\fIsize\fR' specifies the size of the region.
+.RE
+.RS
+`\fIkbuf\fR' specifies the pointer to the region of the cipher key.
+.RE
+.RS
+`\fIksiz\fR' specifies the size of the region of the cipher key.
+.RE
+.RS
+`\fIobuf\fR' specifies the pointer to the region into which the result data is written.  The size of the buffer should be equal to or more than the input region.
 .RE
 .RE
 .PP
@@ -3585,7 +3633,7 @@ The function `tcstrmktime' is used in order to get the time value of a date stri
 `\fIstr\fR' specifies the date string in decimal, hexadecimal, W3CDTF, or RFC 822 (1123).  Decimal can be trailed by "s" for in seconds, "m" for in minutes, "h" for in hours, and "d" for in days.
 .RE
 .RS
-The return value is the time value of the date or `INT64_MAX' if the format is invalid.
+The return value is the time value of the date or `INT64_MIN' if the format is invalid.
 .RE
 .RE
 .PP
@@ -3633,6 +3681,28 @@ The return value is the canonicalized absolute path of a file, or `NULL' if the 
 .RE
 .RS
 Because the region of the return value is allocated with the `malloc' call, it should be released with the `free' call when it is no longer in use.
+.RE
+.RE
+.PP
+The function `tcstatfile' is used in order to get the status information of a file.
+.PP
+.RS
+.br
+\fBbool tcstatfile(const char *\fIpath\fB, bool *\fIisdirp\fB, int64_t *\fIsizep\fB, int64_t *\fImtimep\fB);\fR
+.RS
+`\fIpath\fR' specifies the path of the file.
+.RE
+.RS
+`\fIisdirp\fR' specifies the pointer to a variable into which whether the file is a directory is assigned.  If it is `NULL', it is ignored.
+.RE
+.RS
+`\fIsizep\fR' specifies the pointer to a variable into which the size of the file is assigned.  If it is `NULL', it is ignored.
+.RE
+.RS
+`\fIntimep\fR' specifies the pointer to a variable into which the size of the file is assigned.  If it is `NULL', it is ignored.
+.RE
+.RS
+If successful, the return value is true, else, it is false.
 .RE
 .RE
 .PP
@@ -3898,7 +3968,7 @@ The function `tcurlbreak' is used in order to break up a URL into elements.
 `\fIstr\fR' specifies the URL string.
 .RE
 .RS
-The return value is the map object whose keys are the name of elements.  The key "self" specifies the URL itself.  The key "scheme" specifies the scheme.  The key "host" specifies the host of the server.  The key "port" specifies the port number of the server.  The key "authority" specifies the authority information.  The key "path" specifies the path of the resource.  The key "file" specifies the file name without the directory section.  The key "query" specifies the query string.  The key "fragment" specifies the fragment string.
+The return value is the map object whose keys are the name of elements.  The key "self" indicates the URL itself.  The key "scheme" indicates the scheme.  The key "host" indicates the host of the server.  The key "port" indicates the port number of the server.  The key "authority" indicates the authority information.  The key "path" indicates the path of the resource.  The key "file" indicates the file name without the directory section.  The key "query" indicates the query string.  The key "fragment" indicates the fragment string.
 .RE
 .RS
 Supported schema are HTTP, HTTPS, FTP, and FILE.  Absolute URL and relative URL are supported.  Because the object of the return value is created with the function `tcmapnew', it should be deleted with the function `tcmapdel' when it is no longer in use.
@@ -4062,7 +4132,7 @@ The function `tcmimebreak' is used in order to split a string of MIME into heade
 The return value is the pointer to the region of the body data.
 .RE
 .RS
-If the content type is defined, the header map has the key "TYPE" specifying the type.  If the character encoding is defined, the key "CHARSET" specifies the encoding name.  If the boundary string of multipart is defined, the key "BOUNDARY" specifies the string.  If the content disposition is defined, the key "DISPOSITION" specifies the direction.  If the file name is defined, the key "FILENAME" specifies the name.  If the attribute name is defined, the key "NAME" specifies the name.  Because the region of the return value is allocated with the `malloc' call, it should be released with the `free' call when it is no longer in use.
+If the content type is defined, the header map has the key "TYPE" specifying the type.  If the character encoding is defined, the key "CHARSET" indicates the encoding name.  If the boundary string of multipart is defined, the key "BOUNDARY" indicates the string.  If the content disposition is defined, the key "DISPOSITION" indicates the direction.  If the file name is defined, the key "FILENAME" indicates the name.  If the attribute name is defined, the key "NAME" indicates the name.  Because the region of the return value is allocated with the `malloc' call, it should be released with the `free' call when it is no longer in use.
 .RE
 .RE
 .PP

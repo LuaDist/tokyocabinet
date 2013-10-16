@@ -1,4 +1,4 @@
-# Makefile for sample programs of Hyper Estraier
+# Makefile for sample programs of Tokyo Cabinet
 
 
 
@@ -15,8 +15,8 @@ MYBINS = tcutilex tchdbex tcbdbex tcfdbex tctdbex tcadbex tctchat.cgi tctsearch.
 
 # Building binaries
 CC = gcc
-CFLAGS = -ansi -Wall -pedantic -I. -I..
-C99FLAGS = -std=c99 -Wall -pedantic -I. -I..
+CFLAGS = -I. -I.. -ansi -Wall -pedantic -fsigned-char -O2
+C99FLAGS = -I. -I.. -std=c99 -Wall -pedantic -fsigned-char -O2
 LDFLAGS =
 LIBS = -L. -L.. -ltokyocabinet -lz -lbz2 -lpthread -lm -lc
 LDENV = LD_RUN_PATH=/lib:/usr/lib:$(HOME)/lib:/usr/local/lib:.:..
@@ -105,7 +105,7 @@ tctsearch.tct :
 	LD_LIBRARY_PATH=/usr/local/lib:.:.. ../tctmgr create tctsearch.tct
 	LD_LIBRARY_PATH=/usr/local/lib:.:.. ../tctmgr setindex -it qgram tctsearch.tct "text"
 	LD_LIBRARY_PATH=/usr/local/lib:.:.. ../tctmgr setindex -it qgram tctsearch.tct "title"
-	../lab/htmldoctotsv -t .. | \
+	../lab/htmltotsv .. | \
 	  LD_LIBRARY_PATH=/usr/local/lib:.:.. ../tctmgr importtsv tctsearch.tct
 
 

@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * System-dependent configurations of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -67,18 +67,18 @@ static char *_tc_deflate_impl(const char *ptr, int size, int *sp, int mode){
   zs.zfree = Z_NULL;
   zs.opaque = Z_NULL;
   switch(mode){
-  case _TCZMRAW:
-    if(deflateInit2(&zs, 5, Z_DEFLATED, -15, 7, Z_DEFAULT_STRATEGY) != Z_OK)
-      return NULL;
-    break;
-  case _TCZMGZIP:
-    if(deflateInit2(&zs, 6, Z_DEFLATED, 15 + 16, 9, Z_DEFAULT_STRATEGY) != Z_OK)
-      return NULL;
-    break;
-  default:
-    if(deflateInit2(&zs, 6, Z_DEFLATED, 15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
-      return NULL;
-    break;
+    case _TCZMRAW:
+      if(deflateInit2(&zs, 5, Z_DEFLATED, -15, 7, Z_DEFAULT_STRATEGY) != Z_OK)
+        return NULL;
+      break;
+    case _TCZMGZIP:
+      if(deflateInit2(&zs, 6, Z_DEFLATED, 15 + 16, 9, Z_DEFAULT_STRATEGY) != Z_OK)
+        return NULL;
+      break;
+    default:
+      if(deflateInit2(&zs, 6, Z_DEFLATED, 15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+        return NULL;
+      break;
   }
   int asiz = size + 16;
   if(asiz < ZLIBBUFSIZ) asiz = ZLIBBUFSIZ;
@@ -144,15 +144,15 @@ static char *_tc_inflate_impl(const char *ptr, int size, int *sp, int mode){
   zs.zfree = Z_NULL;
   zs.opaque = Z_NULL;
   switch(mode){
-  case _TCZMRAW:
-    if(inflateInit2(&zs, -15) != Z_OK) return NULL;
-    break;
-  case _TCZMGZIP:
-    if(inflateInit2(&zs, 15 + 16) != Z_OK) return NULL;
-    break;
-  default:
-    if(inflateInit2(&zs, 15) != Z_OK) return NULL;
-    break;
+    case _TCZMRAW:
+      if(inflateInit2(&zs, -15) != Z_OK) return NULL;
+      break;
+    case _TCZMGZIP:
+      if(inflateInit2(&zs, 15 + 16) != Z_OK) return NULL;
+      break;
+    default:
+      if(inflateInit2(&zs, 15) != Z_OK) return NULL;
+      break;
   }
   int asiz = size * 2 + 16;
   if(asiz < ZLIBBUFSIZ) asiz = ZLIBBUFSIZ;

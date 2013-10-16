@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The utility API of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -28,7 +28,9 @@ __TCUTIL_CLINKAGEBEGIN
 
 
 #include <stdlib.h>
+#if ! defined(__cplusplus)
 #include <stdbool.h>
+#endif
 #include <stdint.h>
 #include <time.h>
 #include <limits.h>
@@ -2260,6 +2262,18 @@ TCMAP *tcmpoolmapnew(TCMPOOL *mpool);
 TCTREE *tcmpooltreenew(TCMPOOL *mpool);
 
 
+/* Remove the most recently installed cleanup handler of a memory pool object.
+   `mpool' specifies the memory pool object.
+   `exe' specifies whether to execute the destructor of the removed handler. */
+void tcmpoolpop(TCMPOOL *mpool, bool exe);
+
+
+/* Remove all cleanup handler of a memory pool object.
+   `mpool' specifies the memory pool object.
+   `exe' specifies whether to execute the destructors of the removed handlers. */
+void tcmpoolclear(TCMPOOL *mpool, bool exe);
+
+
 /* Get the global memory pool object.
    The return value is the global memory pool object.
    The global memory pool object is a singleton and assured to be deleted when the porcess is
@@ -2493,12 +2507,22 @@ bool tcregexmatch(const char *str, const char *regex);
 char *tcregexreplace(const char *str, const char *regex, const char *alt);
 
 
-/* Get the MD5 hash value of a record.
-   `ptr' specifies the pointer to the region of the record.
+/* Get the MD5 hash value of a serial object.
+   `ptr' specifies the pointer to the region.
    `size' specifies the size of the region.
    `buf' specifies the pointer to the region into which the result string is written.  The size
    of the buffer should be equal to or more than 48 bytes. */
 void tcmd5hash(const void *ptr, int size, char *buf);
+
+
+/* Cipher or decipher a serial object with the Arcfour stream cipher.
+   `ptr' specifies the pointer to the region.
+   `size' specifies the size of the region.
+   `kbuf' specifies the pointer to the region of the cipher key.
+   `ksiz' specifies the size of the region of the cipher key.
+   `obuf' specifies the pointer to the region into which the result data is written.  The size
+   of the buffer should be equal to or more than the input region. */
+void tcarccipher(const void *ptr, int size, const void *kbuf, int ksiz, void *obuf);
 
 
 /* Get the time of day in seconds.
@@ -2553,7 +2577,7 @@ void tcdatestrhttp(int64_t t, int jl, char *buf);
    `str' specifies the date string in decimal, hexadecimal, W3CDTF, or RFC 822 (1123).  Decimal
    can be trailed by "s" for in seconds, "m" for in minutes, "h" for in hours, and "d" for in
    days.
-   The return value is the time value of the date or `INT64_MAX' if the format is invalid. */
+   The return value is the time value of the date or `INT64_MIN' if the format is invalid. */
 int64_t tcstrmktime(const char *str);
 
 
@@ -2747,10 +2771,12 @@ bool tcsleep(double sec);
 
 
 /* Get the current system information.
-   The return value is a map object of the current system information or `NULL' on failure.  The
-   key "size" specifies the process size in bytes.  The "rss" specifies the resident set size in
-   bytes.  "total" specifies the total size of the real memory.  "free" specifies the free size
-   of the real memory.  "cached" specifies the cached size of the real memory.
+   The return value is a map object of the current system information or `NULL' on failure.
+   The key "utime" indicates the user time of the CPU.  The key "stime" indicates the system time
+   of the CPU.  The key "size" indicates the process size in bytes.  The "rss" indicates the
+   resident set size in bytes.  "total" indicates the total size of the real memory.  "free"
+   indicates the free size of the real memory.  "cached" indicates the cached size of the real
+   memory.
    Because the object of the return value is created with the function `tcmapnew', it should be
    deleted with the function `tcmapdel' when it is no longer in use. */
 TCMAP *tcsysinfo(void);
@@ -2791,6 +2817,18 @@ int tcchidxhash(TCCHIDX *chidx, const void *ptr, int size);
    Because the region of the return value is allocated with the `malloc' call, it should be
    released with the `free' call when it is no longer in use. */
 char *tcrealpath(const char *path);
+
+
+/* Get the status information of a file.
+   `path' specifies the path of the file.
+   `isdirp' specifies the pointer to a variable into which whether the file is a directory is
+   assigned.  If it is `NULL', it is ignored.
+   `sizep' specifies the pointer to a variable into which the size of the file is assigned.  If
+   it is `NULL', it is ignored.
+   `ntimep' specifies the pointer to a variable into which the size of the file is assigned.  If
+   it is `NULL', it is ignored.
+   If successful, the return value is true, else, it is false. */
+bool tcstatfile(const char *path, bool *isdirp, int64_t *sizep, int64_t *mtimep);
 
 
 /* Read whole data of a file.
@@ -2926,11 +2964,11 @@ char *tcurldecode(const char *str, int *sp);
 /* Break up a URL into elements.
    `str' specifies the URL string.
    The return value is the map object whose keys are the name of elements.  The key "self"
-   specifies the URL itself.  The key "scheme" specifies the scheme.  The key "host" specifies
-   the host of the server.  The key "port" specifies the port number of the server.  The key
-   "authority" specifies the authority information.  The key "path" specifies the path of the
-   resource.  The key "file" specifies the file name without the directory section.  The key
-   "query" specifies the query string.  The key "fragment" specifies the fragment string.
+   specifies the URL itself.  The key "scheme" indicates the scheme.  The key "host" indicates
+   the host of the server.  The key "port" indicates the port number of the server.  The key
+   "authority" indicates the authority information.  The key "path" indicates the path of the
+   resource.  The key "file" indicates the file name without the directory section.  The key
+   "query" indicates the query string.  The key "fragment" indicates the fragment string.
    Supported schema are HTTP, HTTPS, FTP, and FILE.  Absolute URL and relative URL are supported.
    Because the object of the return value is created with the function `tcmapnew', it should be
    deleted with the function `tcmapdel' when it is no longer in use. */
@@ -3018,11 +3056,11 @@ char *tcmimedecode(const char *str, char *enp);
    value is assigned.
    The return value is the pointer to the region of the body data.
    If the content type is defined, the header map has the key "TYPE" specifying the type.  If the
-   character encoding is defined, the key "CHARSET" specifies the encoding name.  If the boundary
-   string of multipart is defined, the key "BOUNDARY" specifies the string.  If the content
-   disposition is defined, the key "DISPOSITION" specifies the direction.  If the file name is
-   defined, the key "FILENAME" specifies the name.  If the attribute name is defined, the key
-   "NAME" specifies the name.  Because the region of the return value is allocated with the
+   character encoding is defined, the key "CHARSET" indicates the encoding name.  If the boundary
+   string of multipart is defined, the key "BOUNDARY" indicates the string.  If the content
+   disposition is defined, the key "DISPOSITION" indicates the direction.  If the file name is
+   defined, the key "FILENAME" indicates the name.  If the attribute name is defined, the key
+   "NAME" indicates the name.  Because the region of the return value is allocated with the
    `malloc' call, it should be released with the `free' call when it is no longer in use. */
 char *tcmimebreak(const char *ptr, int size, TCMAP *headers, int *sp);
 
@@ -3245,6 +3283,15 @@ char *tcwwwformencode(const TCMAP *params);
 void tcwwwformdecode(const char *str, TCMAP *params);
 
 
+/* Decode a data region in the x-www-form-urlencoded or multipart-form-data format.
+   `ptr' specifies the pointer to the data region.
+   `size' specifies the size of the data region.
+   `type' specifies the value of the content-type header.  If it is `NULL', the type is specified
+   as x-www-form-urlencoded.
+   `params' specifies a map object into which the result parameters are stored. */
+void tcwwwformdecode2(const void *ptr, int size, const char *type, TCMAP *params);
+
+
 /* Split an XML string into tags and text sections.
    `str' specifies the string.
    The return value is the list object whose elements are strings of tags or text sections.
@@ -3335,21 +3382,25 @@ void tctmplsetsep(TCTMPL *tmpl, const char *begsep, const char *endsep);
    hash variable of the record whose key is "bar" in the hash variable whose name is "foo".
    Moreover, control flow directives are also supported.  "[% IF ... %]", "[% ELSE %]", and
    "[% END %]" are conditional directives.  "[% FOREACH ... %]" and "[% END %]" are iterator
-   directives for a list object.  "[% CONF ... %]" is a configuration directive.  If the ending
-   separator of a directive is leaded by "\", the next linefeed character is ignored.  Variable
-   expansion directive needs the parameter for the variable name.  The optional parameter "DEF"
-   trailed by a string specifies the default value.  The optional parameter "ENC" trailed by a
-   string specifies the encoding format.  "URL" for the URL escape encoding, "XML" for the XML
-   escape encoding, "CSTR" for C-string escape encoding, and "JSON" for JSON escape encoding are
-   supported.  The conditional directive needs the parameter for the variable name.  If the
-   variable exists, the block to the correspondent ending directive is evaluated, else, the block
-   is ignored.  The optional parameter "EQ" trailed by a string specifies the string full
-   matching test.  The optional parameter "RX" trailed by a string specifies the regular
-   expression matching test.  The optional parameter "NOT" inverts the logical determination.
-   The iterator directive needs the parameter for the variable name of a list object.  The block
-   to the correspondent ending directive is evaluated for each element of the list.  The optional
-   parameter specifies the local variable name of each element.  The configuration directive
-   needs the parameters for the variable name and its value. */
+   directives for a list object.  "[% SET ... %]" is a session variable setting directive.
+   "[% CONF ... %]" is a configuration directive.  If the ending separator of a directive is
+   leaded by "\", the next linefeed character is ignored.  Variable expansion directive needs the
+   parameter for the variable name.  The optional parameter "DEF" trailed by a string specifies
+   the default value.  The optional parameter "ENC" trailed by a string specifies the encoding
+   format.  "URL" for the URL escape encoding, "XML" for the XML escape encoding, "CSTR" for
+   C-string escape encoding, and "JSON" for JSON escape encoding are supported.  The conditional
+   directive needs the parameter for the variable name.  If the variable exists, the block to the
+   correspondent ending directive is evaluated, else, the block is ignored.  The optional
+   parameter "EQ" trailed by a string specifies the string full matching test.  The optional
+   parameter "INC" trailed by a string specifies the string including matching test.  The
+   optional parameter "PRT" indicates the printable test.  The optional parameter "RX" trailed by
+   a string specifies the regular expression matching test.  The optional parameter "NOT" inverts
+   the logical determination.  The iterator directive needs the parameter for the variable name
+   of a list object.  The block to the correspondent ending directive is evaluated for each
+   element of the list.  The optional parameter specifies the local variable name of each
+   element.  The session variable setting directive needs the parameters for the variable name
+   and its value.  The configuration directive needs the parameters for the variable name and
+   its value. */
 void tctmplload(TCTMPL *tmpl, const char *str);
 
 
@@ -3634,8 +3685,8 @@ typedef unsigned char TCBITMAP;          /* type of a bit map object */
 
 #include <stdio.h>
 
-#define _TC_VERSION    "1.4.29"
-#define _TC_LIBVER     820
+#define _TC_VERSION    "1.4.48"
+#define _TC_LIBVER     911
 #define _TC_FORMATVER  "1.0"
 
 enum {                                   /* enumeration for error codes */
@@ -3949,9 +4000,15 @@ uint64_t tcpagealign(uint64_t off);
   } while(false)
 
 
+/* Get the alignment of a variable type. */
+#define TCALIGNOF(TC_a) \
+  ((int)offsetof(struct { int8_t TC_top; TC_a TC_bot; }, TC_bot))
+
+
 /* Get the size of padding bytes for pointer alignment. */
+typedef union { int32_t i; int64_t l; double d; void *p; TCCMP f; } tcgeneric_t;
 #define TCALIGNPAD(TC_hsiz) \
-  (((TC_hsiz | ~-(int)sizeof(void *)) + 1) - TC_hsiz)
+  (((TC_hsiz | ~-TCALIGNOF(tcgeneric_t)) + 1) - TC_hsiz)
 
 
 /* Alias of `tcxstrcat'. */

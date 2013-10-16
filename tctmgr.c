@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The command line utility of the table database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -152,7 +152,7 @@ static int printdata(const char *ptr, int size, bool px){
 static char *mygetline(FILE *ifp){
   int len = 0;
   int blen = 1024;
-  char *buf = tcmalloc(blen);
+  char *buf = tcmalloc(blen + 1);
   bool end = true;
   int c;
   while((c = fgetc(ifp)) != EOF){
@@ -686,22 +686,22 @@ static int procinform(const char *path, int omode){
   for(int i = 0; i < inum; i++){
     TDBIDX *idxp = idxs + i;
     switch(idxp->type){
-    case TDBITLEXICAL:
-      printf("  name=%s, type=lexical, rnum=%lld, fsiz=%lld\n",
-             idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
-      break;
-    case TDBITDECIMAL:
-      printf("  name=%s, type=decimal, rnum=%lld, fsiz=%lld\n",
-             idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
-      break;
-    case TDBITTOKEN:
-      printf("  name=%s, type=token, rnum=%lld, fsiz=%lld\n",
-             idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
-      break;
-    case TDBITQGRAM:
-      printf("  name=%s, type=qgram, rnum=%lld, fsiz=%lld\n",
-             idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
-      break;
+      case TDBITLEXICAL:
+        printf("  name=%s, type=lexical, rnum=%lld, fsiz=%lld\n",
+               idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
+        break;
+      case TDBITDECIMAL:
+        printf("  name=%s, type=decimal, rnum=%lld, fsiz=%lld\n",
+               idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
+        break;
+      case TDBITTOKEN:
+        printf("  name=%s, type=token, rnum=%lld, fsiz=%lld\n",
+               idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
+        break;
+      case TDBITQGRAM:
+        printf("  name=%s, type=qgram, rnum=%lld, fsiz=%lld\n",
+               idxp->name, (long long)tcbdbrnum(idxp->db), (long long)tcbdbfsiz(idxp->db));
+        break;
     }
   }
   printf("unique ID seed: %lld\n", (long long)tctdbuidseed(tdb));
@@ -747,40 +747,40 @@ static int procput(const char *path, const char *pkbuf, int pksiz, TCMAP *cols,
   }
   const char *vbuf;
   switch(dmode){
-  case -1:
-    if(!tctdbputkeep(tdb, pkbuf, pksiz, cols)){
-      printerr(tdb);
-      err = true;
-    }
-    break;
-  case 1:
-    if(!tctdbputcat(tdb, pkbuf, pksiz, cols)){
-      printerr(tdb);
-      err = true;
-    }
-    break;
-  case 10:
-    vbuf = tcmapget2(cols, "_num");
-    if(!vbuf) vbuf = "1";
-    if(tctdbaddint(tdb, pkbuf, pksiz, tcatoi(vbuf)) == INT_MIN){
-      printerr(tdb);
-      err = true;
-    }
-    break;
-  case 11:
-    vbuf = tcmapget2(cols, "_num");
-    if(!vbuf) vbuf = "1.0";
-    if(isnan(tctdbadddouble(tdb, pkbuf, pksiz, tcatof(vbuf)))){
-      printerr(tdb);
-      err = true;
-    }
-    break;
-  default:
-    if(!tctdbput(tdb, pkbuf, pksiz, cols)){
-      printerr(tdb);
-      err = true;
-    }
-    break;
+    case -1:
+      if(!tctdbputkeep(tdb, pkbuf, pksiz, cols)){
+        printerr(tdb);
+        err = true;
+      }
+      break;
+    case 1:
+      if(!tctdbputcat(tdb, pkbuf, pksiz, cols)){
+        printerr(tdb);
+        err = true;
+      }
+      break;
+    case 10:
+      vbuf = tcmapget2(cols, "_num");
+      if(!vbuf) vbuf = "1";
+      if(tctdbaddint(tdb, pkbuf, pksiz, tcatoi(vbuf)) == INT_MIN){
+        printerr(tdb);
+        err = true;
+      }
+      break;
+    case 11:
+      vbuf = tcmapget2(cols, "_num");
+      if(!vbuf) vbuf = "1.0";
+      if(isnan(tctdbadddouble(tdb, pkbuf, pksiz, tcatof(vbuf)))){
+        printerr(tdb);
+        err = true;
+      }
+      break;
+    default:
+      if(!tctdbput(tdb, pkbuf, pksiz, cols)){
+        printerr(tdb);
+        err = true;
+      }
+      break;
   }
   if(!tctdbclose(tdb)){
     if(!err) printerr(tdb);
@@ -1232,7 +1232,7 @@ static int procimporttsv(const char *path, const char *file, int omode, bool sc)
 static int procversion(void){
   printf("Tokyo Cabinet version %s (%d:%s) for %s\n",
          tcversion, _TC_LIBVER, _TC_FORMATVER, TCSYSNAME);
-  printf("Copyright (C) 2006-2009 Mikio Hirabayashi\n");
+  printf("Copyright (C) 2006-2012 FAL Labs\n");
   return 0;
 }
 

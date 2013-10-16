@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The command line utility of the B+ tree database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -141,7 +141,7 @@ static int printdata(const char *ptr, int size, bool px){
 static char *mygetline(FILE *ifp){
   int len = 0;
   int blen = 1024;
-  char *buf = tcmalloc(blen);
+  char *buf = tcmalloc(blen + 1);
   bool end = true;
   int c;
   while((c = fgetc(ifp)) != EOF){
@@ -698,49 +698,57 @@ static int procput(const char *path, const char *kbuf, int ksiz, const char *vbu
     return 1;
   }
   bool err = false;
+  int inum;
+  double dnum;
   switch(dmode){
-  case -1:
-    if(!tcbdbputkeep(bdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(bdb);
-      err = true;
-    }
-    break;
-  case 1:
-    if(!tcbdbputcat(bdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(bdb);
-      err = true;
-    }
-    break;
-  case 2:
-    if(!tcbdbputdup(bdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(bdb);
-      err = true;
-    }
-    break;
-  case 3:
-    if(!tcbdbputdupback(bdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(bdb);
-      err = true;
-    }
-    break;
-  case 10:
-    if(tcbdbaddint(bdb, kbuf, ksiz, tcatoi(vbuf)) == INT_MIN){
-      printerr(bdb);
-      err = true;
-    }
-    break;
-  case 11:
-    if(isnan(tcbdbadddouble(bdb, kbuf, ksiz, tcatof(vbuf)))){
-      printerr(bdb);
-      err = true;
-    }
-    break;
-  default:
-    if(!tcbdbput(bdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(bdb);
-      err = true;
-    }
-    break;
+    case -1:
+      if(!tcbdbputkeep(bdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(bdb);
+        err = true;
+      }
+      break;
+    case 1:
+      if(!tcbdbputcat(bdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(bdb);
+        err = true;
+      }
+      break;
+    case 2:
+      if(!tcbdbputdup(bdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(bdb);
+        err = true;
+      }
+      break;
+    case 3:
+      if(!tcbdbputdupback(bdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(bdb);
+        err = true;
+      }
+      break;
+    case 10:
+      inum = tcbdbaddint(bdb, kbuf, ksiz, tcatoi(vbuf));
+      if(inum == INT_MIN){
+        printerr(bdb);
+        err = true;
+      } else {
+        printf("%d\n", inum);
+      }
+      break;
+    case 11:
+      dnum = tcbdbadddouble(bdb, kbuf, ksiz, tcatof(vbuf));
+      if(isnan(dnum)){
+        printerr(bdb);
+        err = true;
+      } else {
+        printf("%.6f\n", dnum);
+      }
+      break;
+    default:
+      if(!tcbdbput(bdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(bdb);
+        err = true;
+      }
+      break;
   }
   if(!tcbdbclose(bdb)){
     if(!err) printerr(bdb);
@@ -1003,7 +1011,7 @@ static int procimporttsv(const char *path, const char *file, int omode, bool sc)
 static int procversion(void){
   printf("Tokyo Cabinet version %s (%d:%s) for %s\n",
          tcversion, _TC_LIBVER, _TC_FORMATVER, TCSYSNAME);
-  printf("Copyright (C) 2006-2009 Mikio Hirabayashi\n");
+  printf("Copyright (C) 2006-2012 FAL Labs\n");
   return 0;
 }
 

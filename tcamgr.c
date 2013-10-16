@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The command line utility of the abstract database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -31,6 +31,7 @@ static void printerr(TCADB *adb);
 static int sepstrtochr(const char *str);
 static char *strtozsv(const char *str, int sep, int *sp);
 static int printdata(const char *ptr, int size, bool px, int sep);
+static void setskeltran(ADBSKEL *skel);
 static bool mapbdbproc(void *map, const char *kbuf, int ksiz, const char *vbuf, int vsiz,
                        void *op);
 static int runcreate(int argc, char **argv);
@@ -119,13 +120,13 @@ static int sepstrtochr(const char *str){
 
 /* encode a string as a zero separaterd string */
 static char *strtozsv(const char *str, int sep, int *sp){
- int size = strlen(str);
- char *buf = tcmemdup(str, size);
- for(int i = 0; i < size; i++){
-   if(buf[i] == sep) buf[i] = '\0';
- }
- *sp = size;
- return buf;
+  int size = strlen(str);
+  char *buf = tcmemdup(str, size);
+  for(int i = 0; i < size; i++){
+    if(buf[i] == sep) buf[i] = '\0';
+  }
+  *sp = size;
+  return buf;
 }
 
 
@@ -157,6 +158,41 @@ static int printdata(const char *ptr, int size, bool px, int sep){
     ptr++;
   }
   return len;
+}
+
+
+/* set the transparent skeleton database */
+static void setskeltran(ADBSKEL *skel){
+  memset(skel, 0, sizeof(*skel));
+  skel->opq = tcadbnew();
+  skel->del = (void (*)(void *))tcadbdel;
+  skel->open = (bool (*)(void *, const char *))tcadbopen;
+  skel->close = (bool (*)(void *))tcadbclose;
+  skel->put = (bool (*)(void *, const void *, int, const void *, int))tcadbput;
+  skel->putkeep = (bool (*)(void *, const void *, int, const void *, int))tcadbputkeep;
+  skel->putcat = (bool (*)(void *, const void *, int, const void *, int))tcadbputcat;
+  skel->out = (bool (*)(void *, const void *, int))tcadbout;
+  skel->get = (void *(*)(void *, const void *, int, int *))tcadbget;
+  skel->vsiz = (int (*)(void *, const void *, int))tcadbvsiz;
+  skel->iterinit = (bool (*)(void *))tcadbiterinit;
+  skel->iternext = (void *(*)(void *, int *))tcadbiternext;
+  skel->fwmkeys = (TCLIST *(*)(void *, const void *, int, int))tcadbfwmkeys;
+  skel->addint = (int (*)(void *, const void *, int, int))tcadbaddint;
+  skel->adddouble = (double (*)(void *, const void *, int, double))tcadbadddouble;
+  skel->sync = (bool (*)(void *))tcadbsync;
+  skel->optimize = (bool (*)(void *, const char *))tcadboptimize;
+  skel->vanish = (bool (*)(void *))tcadbvanish;
+  skel->copy = (bool (*)(void *, const char *))tcadbcopy;
+  skel->tranbegin = (bool (*)(void *))tcadbtranbegin;
+  skel->trancommit = (bool (*)(void *))tcadbtrancommit;
+  skel->tranabort = (bool (*)(void *))tcadbtranabort;
+  skel->path = (const char *(*)(void *))tcadbpath;
+  skel->rnum = (uint64_t (*)(void *))tcadbrnum;
+  skel->size = (uint64_t (*)(void *))tcadbsize;
+  skel->misc = (TCLIST *(*)(void *, const char *, const TCLIST *))tcadbmisc;
+  skel->putproc =
+    (bool (*)(void *, const void *, int, const void *, int, TCPDPROC, void *))tcadbputproc;
+  skel->foreach = (bool (*)(void *, TCITER, void *))tcadbforeach;
 }
 
 
@@ -501,6 +537,24 @@ static int runversion(int argc, char **argv){
 /* perform create command */
 static int proccreate(const char *name){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -519,6 +573,24 @@ static int proccreate(const char *name){
 /* perform inform command */
 static int procinform(const char *name){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -530,13 +602,14 @@ static int procinform(const char *name){
   printf("path: %s\n", path);
   const char *type = "(unknown)";
   switch(tcadbomode(adb)){
-  case ADBOVOID: type = "not opened"; break;
-  case ADBOMDB: type = "on-memory hash database"; break;
-  case ADBONDB: type = "on-memory tree database"; break;
-  case ADBOHDB: type = "hash database"; break;
-  case ADBOBDB: type = "B+ tree database"; break;
-  case ADBOFDB: type = "fixed-length database"; break;
-  case ADBOTDB: type = "table database"; break;
+    case ADBOVOID: type = "not opened"; break;
+    case ADBOMDB: type = "on-memory hash database"; break;
+    case ADBONDB: type = "on-memory tree database"; break;
+    case ADBOHDB: type = "hash database"; break;
+    case ADBOBDB: type = "B+ tree database"; break;
+    case ADBOFDB: type = "fixed-length database"; break;
+    case ADBOTDB: type = "table database"; break;
+    case ADBOSKEL: type = "skeleton database"; break;
   }
   printf("database type: %s\n", type);
   printf("record number: %llu\n", (unsigned long long)tcadbrnum(adb));
@@ -554,43 +627,69 @@ static int procinform(const char *name){
 static int procput(const char *name, const char *kbuf, int ksiz, const char *vbuf, int vsiz,
                    int dmode){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
     return 1;
   }
   bool err = false;
+  int inum;
+  double dnum;
   switch(dmode){
-  case -1:
-    if(!tcadbputkeep(adb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(adb);
-      err = true;
-    }
-    break;
-  case 1:
-    if(!tcadbputcat(adb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(adb);
-      err = true;
-    }
-    break;
-  case 10:
-    if(tcadbaddint(adb, kbuf, ksiz, tcatoi(vbuf)) == INT_MIN){
-      printerr(adb);
-      err = true;
-    }
-    break;
-  case 11:
-    if(isnan(tcadbadddouble(adb, kbuf, ksiz, tcatof(vbuf)))){
-      printerr(adb);
-      err = true;
-    }
-    break;
-  default:
-    if(!tcadbput(adb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(adb);
-      err = true;
-    }
-    break;
+    case -1:
+      if(!tcadbputkeep(adb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(adb);
+        err = true;
+      }
+      break;
+    case 1:
+      if(!tcadbputcat(adb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(adb);
+        err = true;
+      }
+      break;
+    case 10:
+      inum = tcadbaddint(adb, kbuf, ksiz, tcatoi(vbuf));
+      if(inum == INT_MIN){
+        printerr(adb);
+        err = true;
+      } else {
+        printf("%d\n", inum);
+      }
+      break;
+    case 11:
+      dnum = tcadbadddouble(adb, kbuf, ksiz, tcatof(vbuf));
+      if(isnan(dnum)){
+        printerr(adb);
+        err = true;
+      } else {
+        printf("%.6f\n", dnum);
+      }
+      break;
+    default:
+      if(!tcadbput(adb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(adb);
+        err = true;
+      }
+      break;
   }
   if(!tcadbclose(adb)){
     if(!err) printerr(adb);
@@ -604,6 +703,24 @@ static int procput(const char *name, const char *kbuf, int ksiz, const char *vbu
 /* perform out command */
 static int procout(const char *name, const char *kbuf, int ksiz){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -626,6 +743,24 @@ static int procout(const char *name, const char *kbuf, int ksiz){
 /* perform get command */
 static int procget(const char *name, const char *kbuf, int ksiz, int sep, bool px, bool pz){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -654,6 +789,24 @@ static int procget(const char *name, const char *kbuf, int ksiz, int sep, bool p
 /* perform list command */
 static int proclist(const char *name, int sep, int max, bool pv, bool px, const char *fmstr){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -714,6 +867,24 @@ static int proclist(const char *name, int sep, int max, bool pv, bool px, const 
 /* perform optimize command */
 static int procoptimize(const char *name, const char *params){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -736,6 +907,24 @@ static int procoptimize(const char *name, const char *params){
 /* perform misc command */
 static int procmisc(const char *name, const char *func, const TCLIST *args, int sep, bool px){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -767,6 +956,24 @@ static int procmisc(const char *name, const char *func, const TCLIST *args, int 
 /* perform map command */
 static int procmap(const char *name, const char *dest, const char *fmstr){
   TCADB *adb = tcadbnew();
+  ADBSKEL skel;
+  if(*name == '@'){
+    setskeltran(&skel);
+    if(!tcadbsetskel(adb, &skel)){
+      printerr(adb);
+      skel.del(skel.opq);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  } else if(*name == '%'){
+    if(!tcadbsetskelmulti(adb, 8)){
+      printerr(adb);
+      tcadbdel(adb);
+      return 1;
+    }
+    name++;
+  }
   if(!tcadbopen(adb, name)){
     printerr(adb);
     tcadbdel(adb);
@@ -811,7 +1018,7 @@ static int procmap(const char *name, const char *dest, const char *fmstr){
 static int procversion(void){
   printf("Tokyo Cabinet version %s (%d:%s) for %s\n",
          tcversion, _TC_LIBVER, _TC_FORMATVER, TCSYSNAME);
-  printf("Copyright (C) 2006-2009 Mikio Hirabayashi\n");
+  printf("Copyright (C) 2006-2012 FAL Labs\n");
   return 0;
 }
 

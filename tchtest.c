@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The test cases of the hash database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -84,7 +84,7 @@ int main(int argc, char **argv){
     usage();
   }
   if(rv != 0){
-    printf("FAILED:");
+    printf("FAILED: TCRNDSEED=%u PID=%d", g_randseed, (int)getpid());
     for(int i = 0; i < argc; i++){
       printf(" %s", argv[i]);
     }
@@ -196,14 +196,14 @@ static void *pdprocfunc(const void *vbuf, int vsiz, int *sp, void *op){
     char *buf = NULL;
     int len = 0;
     switch((int)(intptr_t)op){
-    case 1:
-      len = vsiz + 1;
-      buf = tcmalloc(len + 1);
-      memset(buf, '*', len);
-      break;
-    case 2:
-      buf = (void *)-1;
-      break;
+      case 1:
+        len = vsiz + 1;
+        buf = tcmalloc(len + 1);
+        memset(buf, '*', len);
+        break;
+      case 2:
+        buf = (void *)-1;
+        break;
     }
     *sp = len;
     return buf;
@@ -831,57 +831,57 @@ static int procrcat(const char *path, int rnum, int bnum, int apow, int fpow,
       char kbuf[RECBUFSIZ];
       int ksiz = sprintf(kbuf, fmt, myrand(pnum));
       switch(myrand(8)){
-      case 0:
-        if(!tchdbput(hdb, kbuf, ksiz, kbuf, ksiz)){
-          eprint(hdb, __LINE__, "tchdbput");
-          err = true;
-        }
-        break;
-      case 1:
-        if(!tchdbputkeep(hdb, kbuf, ksiz, kbuf, ksiz) && tchdbecode(hdb) != TCEKEEP){
-          eprint(hdb, __LINE__, "tchdbputkeep");
-          err = true;
-        }
-        break;
-      case 2:
-        if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
-          eprint(hdb, __LINE__, "tchdbout");
-          err = true;
-        }
-        break;
-      case 3:
-        if(tchdbaddint(hdb, kbuf, ksiz, 1) == INT_MIN && tchdbecode(hdb) != TCEKEEP){
-          eprint(hdb, __LINE__, "tchdbaddint");
-          err = true;
-        }
-        break;
-      case 4:
-        if(isnan(tchdbadddouble(hdb, kbuf, ksiz, 1.0)) && tchdbecode(hdb) != TCEKEEP){
-          eprint(hdb, __LINE__, "tchdbadddouble");
-          err = true;
-        }
-        break;
-      case 5:
-        if(myrand(2) == 0){
-          if(!tchdbputproc(hdb, kbuf, ksiz, kbuf, ksiz, pdprocfunc, NULL) &&
-             tchdbecode(hdb) != TCEKEEP){
-            eprint(hdb, __LINE__, "tchdbputproc");
+        case 0:
+          if(!tchdbput(hdb, kbuf, ksiz, kbuf, ksiz)){
+            eprint(hdb, __LINE__, "tchdbput");
             err = true;
           }
-        } else {
-          if(!tchdbputproc(hdb, kbuf, ksiz, NULL, 0, pdprocfunc, NULL) &&
-             tchdbecode(hdb) != TCEKEEP && tchdbecode(hdb) != TCENOREC){
-            eprint(hdb, __LINE__, "tchdbputproc");
+          break;
+        case 1:
+          if(!tchdbputkeep(hdb, kbuf, ksiz, kbuf, ksiz) && tchdbecode(hdb) != TCEKEEP){
+            eprint(hdb, __LINE__, "tchdbputkeep");
             err = true;
           }
-        }
-        break;
-      default:
-        if(!tchdbputcat(hdb, kbuf, ksiz, kbuf, ksiz)){
-          eprint(hdb, __LINE__, "tchdbputcat");
-          err = true;
-        }
-        break;
+          break;
+        case 2:
+          if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
+            eprint(hdb, __LINE__, "tchdbout");
+            err = true;
+          }
+          break;
+        case 3:
+          if(tchdbaddint(hdb, kbuf, ksiz, 1) == INT_MIN && tchdbecode(hdb) != TCEKEEP){
+            eprint(hdb, __LINE__, "tchdbaddint");
+            err = true;
+          }
+          break;
+        case 4:
+          if(isnan(tchdbadddouble(hdb, kbuf, ksiz, 1.0)) && tchdbecode(hdb) != TCEKEEP){
+            eprint(hdb, __LINE__, "tchdbadddouble");
+            err = true;
+          }
+          break;
+        case 5:
+          if(myrand(2) == 0){
+            if(!tchdbputproc(hdb, kbuf, ksiz, kbuf, ksiz, pdprocfunc, NULL) &&
+               tchdbecode(hdb) != TCEKEEP){
+              eprint(hdb, __LINE__, "tchdbputproc");
+              err = true;
+            }
+          } else {
+            if(!tchdbputproc(hdb, kbuf, ksiz, NULL, 0, pdprocfunc, NULL) &&
+               tchdbecode(hdb) != TCEKEEP && tchdbecode(hdb) != TCENOREC){
+              eprint(hdb, __LINE__, "tchdbputproc");
+              err = true;
+            }
+          }
+          break;
+        default:
+          if(!tchdbputcat(hdb, kbuf, ksiz, kbuf, ksiz)){
+            eprint(hdb, __LINE__, "tchdbputcat");
+            err = true;
+          }
+          break;
       }
       if(err) break;
     } else {
@@ -1084,7 +1084,7 @@ static int procmisc(const char *path, int rnum, bool mt, int opts, int omode){
     }
     if(rnum > 250) iputchar('.');
   }
-  if(rnum > 250) iprintf(" (%08d)\n", sizeof(words) / sizeof(*words));
+  if(rnum > 250) iprintf(" (%08d)\n", (int)(sizeof(words) / sizeof(*words)));
   iprintf("random erasing:\n");
   for(int i = 1; i <= rnum; i++){
     char kbuf[RECBUFSIZ];
@@ -1162,30 +1162,30 @@ static int procmisc(const char *path, int rnum, bool mt, int opts, int omode){
         vbuf[j] = myrand(256);
       }
       switch(myrand(4)){
-      case 0:
-        if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
-          eprint(hdb, __LINE__, "tchdbput");
-          err = true;
-        }
-        break;
-      case 1:
-        if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
-          eprint(hdb, __LINE__, "tchdbputcat");
-          err = true;
-        }
-        break;
-      case 2:
-        if(!tchdbputasync(hdb, kbuf, ksiz, vbuf, vsiz)){
-          eprint(hdb, __LINE__, "tchdbputasync");
-          err = true;
-        }
-        break;
-      case 3:
-        if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
-          eprint(hdb, __LINE__, "tchdbout");
-          err = true;
-        }
-        break;
+        case 0:
+          if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
+            eprint(hdb, __LINE__, "tchdbput");
+            err = true;
+          }
+          break;
+        case 1:
+          if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
+            eprint(hdb, __LINE__, "tchdbputcat");
+            err = true;
+          }
+          break;
+        case 2:
+          if(!tchdbputasync(hdb, kbuf, ksiz, vbuf, vsiz)){
+            eprint(hdb, __LINE__, "tchdbputasync");
+            err = true;
+          }
+          break;
+        case 3:
+          if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
+            eprint(hdb, __LINE__, "tchdbout");
+            err = true;
+          }
+          break;
       }
       tcfree(vbuf);
       tcfree(kbuf);
@@ -1304,7 +1304,7 @@ static int procmisc(const char *path, int rnum, bool mt, int opts, int omode){
     tcfree(rbuf);
     if(rnum > 250) iputchar('.');
   }
-  if(rnum > 250) iprintf(" (%08d)\n", sizeof(words) / sizeof(*words));
+  if(rnum > 250) iprintf(" (%08d)\n", (int)(sizeof(words) / sizeof(*words)));
   iprintf("checking iterator:\n");
   int inum = 0;
   if(!tchdbiterinit(hdb)){
@@ -1383,39 +1383,47 @@ static int procmisc(const char *path, int rnum, bool mt, int opts, int omode){
     char vbuf[RECBUFSIZ];
     int vsiz = sprintf(vbuf, "%d", myrand(rnum));
     switch(myrand(4)){
-    case 0:
-      if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbput");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 1:
-      if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbputkeep");
-        err = true;
-      }
-      tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 2:
-      if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbputcat");
-        err = true;
-      }
-      tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 3:
-      if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
-        eprint(hdb, __LINE__, "tchdbout");
-        err = true;
-      }
-      tcmapout(map, kbuf, ksiz);
-      break;
+      case 0:
+        if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbput");
+          err = true;
+        }
+        tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 1:
+        if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbputkeep");
+          err = true;
+        }
+        tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 2:
+        if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbputcat");
+          err = true;
+        }
+        tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 3:
+        if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
+          eprint(hdb, __LINE__, "tchdbout");
+          err = true;
+        }
+        tcmapout(map, kbuf, ksiz);
+        break;
     }
     if(rnum > 250 && i % (rnum / 250) == 0){
       iputchar('.');
       if(i == rnum || i % (rnum / 10) == 0) iprintf(" (%08d)\n", i);
     }
+  }
+  if(myrand(4) == 0 && !tchdbdefrag(hdb, 0)){
+    eprint(hdb, __LINE__, "tchdbdefrag");
+    err = true;
+  }
+  if(myrand(4) == 0 && !tchdbcacheclear(hdb)){
+    eprint(hdb, __LINE__, "tchdbcacheclear");
+    err = true;
   }
   iprintf("checking transaction commit:\n");
   if(!tchdbtranbegin(hdb)){
@@ -1428,68 +1436,68 @@ static int procmisc(const char *path, int rnum, bool mt, int opts, int omode){
     char vbuf[RECBUFSIZ];
     int vsiz = sprintf(vbuf, "[%d]", myrand(rnum));
     switch(myrand(7)){
-    case 0:
-      if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbput");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 1:
-      if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbputkeep");
-        err = true;
-      }
-      tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 2:
-      if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbputcat");
-        err = true;
-      }
-      tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 3:
-      if(tchdbaddint(hdb, kbuf, ksiz, 1) == INT_MIN && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbaddint");
-        err = true;
-      }
-      tcmapaddint(map, kbuf, ksiz, 1);
-      break;
-    case 4:
-      if(isnan(tchdbadddouble(hdb, kbuf, ksiz, 1.0)) && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbadddouble");
-        err = true;
-      }
-      tcmapadddouble(map, kbuf, ksiz, 1.0);
-      break;
-    case 5:
-      if(myrand(2) == 0){
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tchdbputproc(hdb, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op) &&
-           tchdbecode(hdb) != TCEKEEP){
-          eprint(hdb, __LINE__, "tchdbputproc");
+      case 0:
+        if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbput");
           err = true;
         }
-        tcmapputproc(map, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op);
-      } else {
-        vsiz = myrand(10);
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tchdbputproc(hdb, kbuf, ksiz, NULL, vsiz, pdprocfunc, op) &&
-           tchdbecode(hdb) != TCEKEEP && tchdbecode(hdb) != TCENOREC){
-          eprint(hdb, __LINE__, "tchdbputproc");
+        tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 1:
+        if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbputkeep");
           err = true;
         }
-        tcmapputproc(map, kbuf, ksiz, NULL, vsiz, pdprocfunc, op);
-      }
-      break;
-    case 6:
-      if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
-        eprint(hdb, __LINE__, "tchdbout");
-        err = true;
-      }
-      tcmapout(map, kbuf, ksiz);
-      break;
+        tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 2:
+        if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbputcat");
+          err = true;
+        }
+        tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 3:
+        if(tchdbaddint(hdb, kbuf, ksiz, 1) == INT_MIN && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbaddint");
+          err = true;
+        }
+        tcmapaddint(map, kbuf, ksiz, 1);
+        break;
+      case 4:
+        if(isnan(tchdbadddouble(hdb, kbuf, ksiz, 1.0)) && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbadddouble");
+          err = true;
+        }
+        tcmapadddouble(map, kbuf, ksiz, 1.0);
+        break;
+      case 5:
+        if(myrand(2) == 0){
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tchdbputproc(hdb, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op) &&
+             tchdbecode(hdb) != TCEKEEP){
+            eprint(hdb, __LINE__, "tchdbputproc");
+            err = true;
+          }
+          tcmapputproc(map, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op);
+        } else {
+          vsiz = myrand(10);
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tchdbputproc(hdb, kbuf, ksiz, NULL, vsiz, pdprocfunc, op) &&
+             tchdbecode(hdb) != TCEKEEP && tchdbecode(hdb) != TCENOREC){
+            eprint(hdb, __LINE__, "tchdbputproc");
+            err = true;
+          }
+          tcmapputproc(map, kbuf, ksiz, NULL, vsiz, pdprocfunc, op);
+        }
+        break;
+      case 6:
+        if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
+          eprint(hdb, __LINE__, "tchdbout");
+          err = true;
+        }
+        tcmapout(map, kbuf, ksiz);
+        break;
     }
     if(rnum > 250 && i % (rnum / 250) == 0){
       iputchar('.');
@@ -1513,60 +1521,60 @@ static int procmisc(const char *path, int rnum, bool mt, int opts, int omode){
     char vbuf[RECBUFSIZ];
     int vsiz = sprintf(vbuf, "((%d))", myrand(rnum));
     switch(myrand(7)){
-    case 0:
-      if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbput");
-        err = true;
-      }
-      break;
-    case 1:
-      if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbputkeep");
-        err = true;
-      }
-      break;
-    case 2:
-      if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbputcat");
-        err = true;
-      }
-      break;
-    case 3:
-      if(tchdbaddint(hdb, kbuf, ksiz, 1) == INT_MIN && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbaddint");
-        err = true;
-      }
-      break;
-    case 4:
-      if(isnan(tchdbadddouble(hdb, kbuf, ksiz, 1.0)) && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbadddouble");
-        err = true;
-      }
-      break;
-    case 5:
-      if(myrand(2) == 0){
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tchdbputproc(hdb, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op) &&
-           tchdbecode(hdb) != TCEKEEP){
-          eprint(hdb, __LINE__, "tchdbputproc");
+      case 0:
+        if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbput");
           err = true;
         }
-      } else {
-        vsiz = myrand(10);
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tchdbputproc(hdb, kbuf, ksiz, NULL, vsiz, pdprocfunc, op) &&
-           tchdbecode(hdb) != TCEKEEP && tchdbecode(hdb) != TCENOREC){
-          eprint(hdb, __LINE__, "tchdbputproc");
+        break;
+      case 1:
+        if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbputkeep");
           err = true;
         }
-      }
-      break;
-    case 6:
-      if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
-        eprint(hdb, __LINE__, "tchdbout");
-        err = true;
-      }
-      break;
+        break;
+      case 2:
+        if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbputcat");
+          err = true;
+        }
+        break;
+      case 3:
+        if(tchdbaddint(hdb, kbuf, ksiz, 1) == INT_MIN && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbaddint");
+          err = true;
+        }
+        break;
+      case 4:
+        if(isnan(tchdbadddouble(hdb, kbuf, ksiz, 1.0)) && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbadddouble");
+          err = true;
+        }
+        break;
+      case 5:
+        if(myrand(2) == 0){
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tchdbputproc(hdb, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op) &&
+             tchdbecode(hdb) != TCEKEEP){
+            eprint(hdb, __LINE__, "tchdbputproc");
+            err = true;
+          }
+        } else {
+          vsiz = myrand(10);
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tchdbputproc(hdb, kbuf, ksiz, NULL, vsiz, pdprocfunc, op) &&
+             tchdbecode(hdb) != TCEKEEP && tchdbecode(hdb) != TCENOREC){
+            eprint(hdb, __LINE__, "tchdbputproc");
+            err = true;
+          }
+        }
+        break;
+      case 6:
+        if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
+          eprint(hdb, __LINE__, "tchdbout");
+          err = true;
+        }
+        break;
     }
     if(rnum > 250 && i % (rnum / 250) == 0){
       iputchar('.');
@@ -1741,196 +1749,196 @@ static int procwicked(const char *path, int rnum, bool mt, int opts, int omode){
     vbuf[vsiz] = '\0';
     char *rbuf;
     switch(myrand(16)){
-    case 0:
-      iputchar('0');
-      if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbput");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 1:
-      iputchar('1');
-      if(!tchdbput2(hdb, kbuf, vbuf)){
-        eprint(hdb, __LINE__, "tchdbput2");
-        err = true;
-      }
-      tcmapput2(map, kbuf, vbuf);
-      break;
-    case 2:
-      iputchar('2');
-      if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbputkeep");
-        err = true;
-      }
-      tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 3:
-      iputchar('3');
-      if(!tchdbputkeep2(hdb, kbuf, vbuf) && tchdbecode(hdb) != TCEKEEP){
-        eprint(hdb, __LINE__, "tchdbputkeep2");
-        err = true;
-      }
-      tcmapputkeep2(map, kbuf, vbuf);
-      break;
-    case 4:
-      iputchar('4');
-      if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbputcat");
-        err = true;
-      }
-      tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 5:
-      iputchar('5');
-      if(!tchdbputcat2(hdb, kbuf, vbuf)){
-        eprint(hdb, __LINE__, "tchdbputcat2");
-        err = true;
-      }
-      tcmapputcat2(map, kbuf, vbuf);
-      break;
-    case 6:
-      iputchar('6');
-      if(!tchdbputasync(hdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbputasync");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 7:
-      iputchar('7');
-      if(!tchdbputasync2(hdb, kbuf, vbuf)){
-        eprint(hdb, __LINE__, "tchdbputasync2");
-        err = true;
-      }
-      tcmapput2(map, kbuf, vbuf);
-      break;
-    case 8:
-      iputchar('8');
-      if(myrand(10) == 0){
-        if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
-          eprint(hdb, __LINE__, "tchdbout");
+      case 0:
+        iputchar('0');
+        if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbput");
           err = true;
         }
-        tcmapout(map, kbuf, ksiz);
-      }
-      break;
-    case 9:
-      iputchar('9');
-      if(myrand(10) == 0){
-        if(!tchdbout2(hdb, kbuf) && tchdbecode(hdb) != TCENOREC){
-          eprint(hdb, __LINE__, "tchdbout2");
+        tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 1:
+        iputchar('1');
+        if(!tchdbput2(hdb, kbuf, vbuf)){
+          eprint(hdb, __LINE__, "tchdbput2");
           err = true;
         }
-        tcmapout2(map, kbuf);
-      }
-      break;
-    case 10:
-      iputchar('A');
-      if(!(rbuf = tchdbget(hdb, kbuf, ksiz, &vsiz))){
-        if(tchdbecode(hdb) != TCENOREC){
-          eprint(hdb, __LINE__, "tchdbget");
+        tcmapput2(map, kbuf, vbuf);
+        break;
+      case 2:
+        iputchar('2');
+        if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz) && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbputkeep");
           err = true;
         }
-        rbuf = tcsprintf("[%d]", myrand(i + 1));
-        vsiz = strlen(rbuf);
-      }
-      vsiz += myrand(vsiz);
-      if(myrand(3) == 0) vsiz += PATH_MAX;
-      rbuf = tcrealloc(rbuf, vsiz + 1);
-      for(int j = 0; j < vsiz; j++){
-        rbuf[j] = myrand(0x100);
-      }
-      if(!tchdbput(hdb, kbuf, ksiz, rbuf, vsiz)){
-        eprint(hdb, __LINE__, "tchdbput");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, rbuf, vsiz);
-      tcfree(rbuf);
-      break;
-    case 11:
-      iputchar('B');
-      if(!(rbuf = tchdbget(hdb, kbuf, ksiz, &vsiz)) && tchdbecode(hdb) != TCENOREC){
-        eprint(hdb, __LINE__, "tchdbget");
-        err = true;
-      }
-      tcfree(rbuf);
-      break;
-    case 12:
-      iputchar('C');
-      if(!(rbuf = tchdbget2(hdb, kbuf)) && tchdbecode(hdb) != TCENOREC){
-        eprint(hdb, __LINE__, "tchdbget2");
-        err = true;
-      }
-      tcfree(rbuf);
-      break;
-    case 13:
-      iputchar('D');
-      if(myrand(1) == 0) vsiz = 1;
-      if((vsiz = tchdbget3(hdb, kbuf, ksiz, vbuf, vsiz)) < 0 && tchdbecode(hdb) != TCENOREC){
-        eprint(hdb, __LINE__, "tchdbget3");
-        err = true;
-      }
-      break;
-    case 14:
-      iputchar('E');
-      if(myrand(rnum / 50) == 0){
-        if(!tchdbiterinit(hdb)){
-          eprint(hdb, __LINE__, "tchdbiterinit");
+        tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 3:
+        iputchar('3');
+        if(!tchdbputkeep2(hdb, kbuf, vbuf) && tchdbecode(hdb) != TCEKEEP){
+          eprint(hdb, __LINE__, "tchdbputkeep2");
           err = true;
         }
-      }
-      TCXSTR *ikey = tcxstrnew();
-      TCXSTR *ival = tcxstrnew();
-      for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
-        if(j % 3 == 0){
-          if(tchdbiternext3(hdb, ikey, ival)){
-            if(tcxstrsize(ival) != tchdbvsiz(hdb, tcxstrptr(ikey), tcxstrsize(ikey))){
-              eprint(hdb, __LINE__, "(validation)");
-              err = true;
-            }
-          } else {
-            int ecode = tchdbecode(hdb);
-            if(ecode != TCEINVALID && ecode != TCENOREC){
-              eprint(hdb, __LINE__, "tchdbiternext3");
-              err = true;
-            }
-          }
-        } else {
-          int iksiz;
-          char *ikbuf = tchdbiternext(hdb, &iksiz);
-          if(ikbuf){
-            tcfree(ikbuf);
-          } else {
-            int ecode = tchdbecode(hdb);
-            if(ecode != TCEINVALID && ecode != TCENOREC){
-              eprint(hdb, __LINE__, "tchdbiternext");
-              err = true;
-            }
-          }
+        tcmapputkeep2(map, kbuf, vbuf);
+        break;
+      case 4:
+        iputchar('4');
+        if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbputcat");
+          err = true;
         }
-      }
-      tcxstrdel(ival);
-      tcxstrdel(ikey);
-      break;
-    default:
-      iputchar('@');
-      if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
-      if(myrand(rnum / 16 + 1) == 0){
-        int cnt = myrand(30);
-        for(int j = 0; j < rnum && !err; j++){
-          ksiz = sprintf(kbuf, "%d", i + j);
-          if(tchdbout(hdb, kbuf, ksiz)){
-            cnt--;
-          } else if(tchdbecode(hdb) != TCENOREC){
+        tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 5:
+        iputchar('5');
+        if(!tchdbputcat2(hdb, kbuf, vbuf)){
+          eprint(hdb, __LINE__, "tchdbputcat2");
+          err = true;
+        }
+        tcmapputcat2(map, kbuf, vbuf);
+        break;
+      case 6:
+        iputchar('6');
+        if(!tchdbputasync(hdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbputasync");
+          err = true;
+        }
+        tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 7:
+        iputchar('7');
+        if(!tchdbputasync2(hdb, kbuf, vbuf)){
+          eprint(hdb, __LINE__, "tchdbputasync2");
+          err = true;
+        }
+        tcmapput2(map, kbuf, vbuf);
+        break;
+      case 8:
+        iputchar('8');
+        if(myrand(10) == 0){
+          if(!tchdbout(hdb, kbuf, ksiz) && tchdbecode(hdb) != TCENOREC){
             eprint(hdb, __LINE__, "tchdbout");
             err = true;
           }
           tcmapout(map, kbuf, ksiz);
-          if(cnt < 0) break;
         }
-      }
-      break;
+        break;
+      case 9:
+        iputchar('9');
+        if(myrand(10) == 0){
+          if(!tchdbout2(hdb, kbuf) && tchdbecode(hdb) != TCENOREC){
+            eprint(hdb, __LINE__, "tchdbout2");
+            err = true;
+          }
+          tcmapout2(map, kbuf);
+        }
+        break;
+      case 10:
+        iputchar('A');
+        if(!(rbuf = tchdbget(hdb, kbuf, ksiz, &vsiz))){
+          if(tchdbecode(hdb) != TCENOREC){
+            eprint(hdb, __LINE__, "tchdbget");
+            err = true;
+          }
+          rbuf = tcsprintf("[%d]", myrand(i + 1));
+          vsiz = strlen(rbuf);
+        }
+        vsiz += myrand(vsiz);
+        if(myrand(3) == 0) vsiz += PATH_MAX;
+        rbuf = tcrealloc(rbuf, vsiz + 1);
+        for(int j = 0; j < vsiz; j++){
+          rbuf[j] = myrand(0x100);
+        }
+        if(!tchdbput(hdb, kbuf, ksiz, rbuf, vsiz)){
+          eprint(hdb, __LINE__, "tchdbput");
+          err = true;
+        }
+        tcmapput(map, kbuf, ksiz, rbuf, vsiz);
+        tcfree(rbuf);
+        break;
+      case 11:
+        iputchar('B');
+        if(!(rbuf = tchdbget(hdb, kbuf, ksiz, &vsiz)) && tchdbecode(hdb) != TCENOREC){
+          eprint(hdb, __LINE__, "tchdbget");
+          err = true;
+        }
+        tcfree(rbuf);
+        break;
+      case 12:
+        iputchar('C');
+        if(!(rbuf = tchdbget2(hdb, kbuf)) && tchdbecode(hdb) != TCENOREC){
+          eprint(hdb, __LINE__, "tchdbget2");
+          err = true;
+        }
+        tcfree(rbuf);
+        break;
+      case 13:
+        iputchar('D');
+        if(myrand(1) == 0) vsiz = 1;
+        if((vsiz = tchdbget3(hdb, kbuf, ksiz, vbuf, vsiz)) < 0 && tchdbecode(hdb) != TCENOREC){
+          eprint(hdb, __LINE__, "tchdbget3");
+          err = true;
+        }
+        break;
+      case 14:
+        iputchar('E');
+        if(myrand(rnum / 50) == 0){
+          if(!tchdbiterinit(hdb)){
+            eprint(hdb, __LINE__, "tchdbiterinit");
+            err = true;
+          }
+        }
+        TCXSTR *ikey = tcxstrnew();
+        TCXSTR *ival = tcxstrnew();
+        for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
+          if(j % 3 == 0){
+            if(tchdbiternext3(hdb, ikey, ival)){
+              if(tcxstrsize(ival) != tchdbvsiz(hdb, tcxstrptr(ikey), tcxstrsize(ikey))){
+                eprint(hdb, __LINE__, "(validation)");
+                err = true;
+              }
+            } else {
+              int ecode = tchdbecode(hdb);
+              if(ecode != TCEINVALID && ecode != TCENOREC){
+                eprint(hdb, __LINE__, "tchdbiternext3");
+                err = true;
+              }
+            }
+          } else {
+            int iksiz;
+            char *ikbuf = tchdbiternext(hdb, &iksiz);
+            if(ikbuf){
+              tcfree(ikbuf);
+            } else {
+              int ecode = tchdbecode(hdb);
+              if(ecode != TCEINVALID && ecode != TCENOREC){
+                eprint(hdb, __LINE__, "tchdbiternext");
+                err = true;
+              }
+            }
+          }
+        }
+        tcxstrdel(ival);
+        tcxstrdel(ikey);
+        break;
+      default:
+        iputchar('@');
+        if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
+        if(myrand(rnum / 16 + 1) == 0){
+          int cnt = myrand(30);
+          for(int j = 0; j < rnum && !err; j++){
+            ksiz = sprintf(kbuf, "%d", i + j);
+            if(tchdbout(hdb, kbuf, ksiz)){
+              cnt--;
+            } else if(tchdbecode(hdb) != TCENOREC){
+              eprint(hdb, __LINE__, "tchdbout");
+              err = true;
+            }
+            tcmapout(map, kbuf, ksiz);
+            if(cnt < 0) break;
+          }
+        }
+        break;
     }
     if(i % 50 == 0) iprintf(" (%08d)\n", i);
     if(i == rnum / 2){

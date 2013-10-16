@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The CGI utility of the abstract database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -112,13 +112,13 @@ int main(int argc, char **argv){
   if(params.page < 1) params.page = 1;
   bool wmode;
   switch(params.action){
-  case ACTPUT:
-  case ACTOUT:
-    wmode = true;
-    break;
-  default:
-    wmode = false;
-    break;
+    case ACTPUT:
+    case ACTOUT:
+      wmode = true;
+      break;
+    default:
+      wmode = false;
+      break;
   }
   TCADB *db = tcadbnew();
   char path[strlen(DBNAME)+16];
@@ -133,18 +133,18 @@ int main(int argc, char **argv){
   if(tcadbsize(db) > 0){
     if(wmode) tcadbtranbegin(db);
     switch(params.action){
-    case ACTLIST:
-    case ACTLISTVAL:
-    case ACTPUT:
-    case ACTOUT:
-      dolist(&params, db);
-      break;
-    case ACTGET:
-      doget(&params, db);
-      break;
-    default:
-      doerror(400, "no such action");
-      break;
+      case ACTLIST:
+      case ACTLISTVAL:
+      case ACTPUT:
+      case ACTOUT:
+        dolist(&params, db);
+        break;
+      case ACTGET:
+        doget(&params, db);
+        break;
+      default:
+        doerror(400, "no such action");
+        break;
     }
     if(wmode) tcadbtrancommit(db);
   } else {
@@ -174,52 +174,7 @@ static void readparameters(TCMAP *params){
     buf = tcstrdup(rp);
     len = strlen(buf);
   }
-  if(buf && len > 0){
-    if((rp = getenv("CONTENT_TYPE")) != NULL && tcstrfwm(rp, "multipart/form-data") &&
-       (rp = strstr(rp, "boundary=")) != NULL){
-      rp += 9;
-      if(*rp == '"') rp++;
-      char bstr[strlen(rp)+1];
-      strcpy(bstr, rp);
-      char *wp = strchr(bstr, ';');
-      if(wp) *wp = '\0';
-      wp = strchr(bstr, '"');
-      if(wp) *wp = '\0';
-      TCLIST *parts = tcmimeparts(buf, len, bstr);
-      int pnum = tclistnum(parts);
-      for(int i = 0; i < pnum; i++){
-        int psiz;
-        const char *part = tclistval(parts, i, &psiz);
-        TCMAP *hmap = tcmapnew2(MINIBNUM);
-        int bsiz;
-        char *body = tcmimebreak(part, psiz, hmap, &bsiz);
-        int nsiz;
-        const char *name = tcmapget(hmap, "NAME", 4, &nsiz);
-        if(name){
-          tcmapput(params, name, nsiz, body, bsiz);
-          const char *fname = tcmapget2(hmap, "FILENAME");
-          if(fname){
-            if(*fname == '/'){
-              fname = strrchr(fname, '/') + 1;
-            } else if(((*fname >= 'a' && *fname <= 'z') || (*fname >= 'A' && *fname <= 'Z')) &&
-                      fname[1] == ':' && fname[2] == '\\'){
-              fname = strrchr(fname, '\\') + 1;
-            }
-            if(*fname != '\0'){
-              char key[nsiz+10];
-              sprintf(key, "%s_filename", name);
-              tcmapput2(params, key, fname);
-            }
-          }
-        }
-        tcfree(body);
-        tcmapdel(hmap);
-      }
-      tclistdel(parts);
-    } else {
-      tcwwwformdecode(buf, params);
-    }
-  }
+  if(buf && len > 0) tcwwwformdecode2(buf, len, getenv("CONTENT_TYPE"), params);
   tcfree(buf);
 }
 
@@ -404,7 +359,8 @@ static void sethtmlheader(PARAMS *params, TCXSTR *obuf, TCADB *db){
   XP("body { margin :0em; padding: 0.5em 1em; background: #eeeeee; color: #111111; }\n");
   XP("h1 { margin: 3px; padding: 0px; font-size: 125%%; }\n");
   XP("h1 a { color: #000000; }\n");
-  XP("hr { margin: 0px 0px; height: 1px; border: none; background: #999999; color: #999999; }\n");
+  XP("hr { margin: 0px 0px; height: 1px; border: none;"
+     " background: #999999; color: #999999; }\n");
   XP("form { margin: 5px; padding: 0px; }\n");
   XP("#list { margin: 5px; padding: 0px; }\n");
   XP("p { margin: 5px; padding: 0px; }\n");
@@ -492,18 +448,18 @@ static void sethtmlrecval(const char *kbuf, int ksiz, TCXSTR *obuf, TCADB *db){
     if(c >= 0x20 && c <= 0x7e){
       if(hex) tcxstrcat(obuf, " ", 1);
       switch(c){
-      case '<':
-        tcxstrcat(obuf, "&lt;", 4);
-        break;
-      case '>':
-        tcxstrcat(obuf, "&gt;", 4);
-        break;
-      case '&':
-        tcxstrcat(obuf, "&amp;", 5);
-        break;
-      default:
-        tcxstrcat(obuf, vbuf + j, 1);
-        break;
+        case '<':
+          tcxstrcat(obuf, "&lt;", 4);
+          break;
+        case '>':
+          tcxstrcat(obuf, "&gt;", 4);
+          break;
+        case '&':
+          tcxstrcat(obuf, "&amp;", 5);
+          break;
+        default:
+          tcxstrcat(obuf, vbuf + j, 1);
+          break;
       }
       width--;
       hex = false;

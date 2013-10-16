@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The table database API of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -27,12 +27,6 @@
 __TCTDB_CLINKAGEBEGIN
 
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <time.h>
-#include <limits.h>
-#include <math.h>
 #include <tcutil.h>
 #include <tchdb.h>
 #include <tcbdb.h>
@@ -68,7 +62,7 @@ typedef struct {                         /* type of structure for a table databa
 
 enum {                                   /* enumeration for additional flags */
   TDBFOPEN = HDBFOPEN,                   /* whether opened */
-  TDBFFATAL = HDBFFATAL                  /* whetehr with fatal error */
+  TDBFFATAL = HDBFFATAL                  /* whether with fatal error */
 };
 
 enum {                                   /* enumeration for tuning options */
@@ -215,7 +209,7 @@ int tctdbecode(TCTDB *tdb);
    `tdb' specifies the table database object which is not opened.
    If successful, the return value is true, else, it is false.
    Note that the mutual exclusion control is needed if the object is shared by plural threads and
-   this function should should be called before the database is opened. */
+   this function should be called before the database is opened. */
 bool tctdbsetmutex(TCTDB *tdb);
 
 
@@ -747,7 +741,7 @@ bool tctdbqrysearchout(TDBQRY *qry);
 bool tctdbqryproc(TDBQRY *qry, TDBQRYPROC proc, void *op);
 
 
-/* Get the hint of a query object.
+/* Get the hint string of a query object.
    `qry' specifies the query object.
    The return value is the hint string.
    This function should be called after the query execution by `tctdbqrysearch' and so on.  The
@@ -931,6 +925,12 @@ uint32_t tctdbdfunit(TCTDB *tdb);
 bool tctdbdefrag(TCTDB *tdb, int64_t step);
 
 
+/* Clear the cache of a table tree database object.
+   `tdb' specifies the table tree database object.
+   If successful, the return value is true, else, it is false. */
+bool tctdbcacheclear(TCTDB *tdb);
+
+
 /* Store a record into a table database object with a duplication handler.
    `tdb' specifies the table database object connected as a writer.
    `pkbuf' specifies the pointer to the region of the primary key.
@@ -1031,13 +1031,19 @@ bool tctdbqrysearchout2(TDBQRY *qry);
 int tctdbstrtoindextype(const char *str);
 
 
+/* Convert a string into the meta search type number.
+   `str' specifies a string.
+   The return value is the meta search type number or -1 on failure. */
+int tctdbstrtometasearcytype(const char *str);
+
+
 /* Get the count of corresponding records of a query object.
    `qry' specifies the query object.
    The return value is the count of corresponding records. */
 int tctdbqrycount(TDBQRY *qry);
 
 
-/* Generate a keyword-in-context string from a query object.
+/* Generate keyword-in-context strings from a query object.
    `qry' specifies the query object.
    `cols' specifies a map object containing columns.
    `name' specifies the name of a column.  If it is `NULL', the first column of the query is

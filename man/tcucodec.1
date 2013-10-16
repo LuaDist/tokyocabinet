@@ -1,4 +1,4 @@
-.TH "TCUCODEC" 1 "2009-06-21" "Man Page" "Tokyo Cabinet"
+.TH "TCUCODEC" 1 "2012-08-18" "Man Page" "Tokyo Cabinet"
 
 .SH NAME
 tcucodec \- popular encoders and decoders
@@ -74,6 +74,11 @@ Convert UTF\-8 string into UCS\-2 array.
 Calculate the hash value.  By default, use MD5 function.
 .RE
 .br
+\fBtcucodec cipher \fR[\fB\-key \fIstr\fB\fR]\fB \fR[\fB\fIfile\fB\fR]\fB\fR
+.RS
+Perform stream cipher and its decipher.
+.RE
+.br
 \fBtcucodec date \fR[\fB\-ds \fIstr\fB\fR]\fB \fR[\fB\-jl \fInum\fB\fR]\fB \fR[\fB\-wf\fR]\fB \fR[\fB\-rf\fR]\fB\fR
 .RS
 Process date string.  By default, print the current UNIX time.
@@ -124,6 +129,8 @@ Options feature the following.
 \fB\-kw \fIstr\fR\fR : generate KWIC string.
 .br
 \fB\-ch \fInum\fR\fR : use consistent hashing function.
+.br
+\fB\-key \fIstr\fR\fR : specify the cipher key.
 .br
 \fB\-ds \fIstr\fR\fR : specify the time.
 .br

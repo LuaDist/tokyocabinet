@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * System-dependent configurations of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -44,7 +44,7 @@
 #define _SYS_OPENBSD_
 #define TCSYSNAME   "OpenBSD"
 
-#elif defined(__sun__)
+#elif defined(__sun__) || defined(__sun)
 
 #define _SYS_SUNOS_
 #define TCSYSNAME   "SunOS"
@@ -153,7 +153,9 @@
 #define TCITOHLL(TC_num)  (TC_num)
 #endif
 
-#if defined(_SYS_LINUX_) || defined(_SYS_FREEBSD_) || defined(_SYS_NETBSD_) || \
+#if defined(_MYNOUBC)
+#define TCUBCACHE      0
+#elif defined(_SYS_LINUX_) || defined(_SYS_FREEBSD_) || defined(_SYS_NETBSD_) || \
   defined(_SYS_MACOSX_) || defined(_SYS_SUNOS_)
 #define TCUBCACHE      1
 #else
@@ -236,6 +238,7 @@
 #include <sys/time.h>
 #include <sys/times.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <regex.h>
@@ -255,10 +258,21 @@
  *************************************************************************************************/
 
 
-#define sizeof(a)      ((int)sizeof(a))
+#if defined(__GNUC__)
+#define _alignof(TC_a) ((size_t)__alignof__(TC_a))
+#else
+#define _alignof(TC_a) sizeof(TC_a)
+#endif
+#define _issigned(TC_a)  ((TC_a)-1 < 1 ? true : false)
+#define _maxof(TC_a) \
+ ((TC_a)(sizeof(TC_a) == sizeof(int64_t) ? _issigned(TC_a) ? INT64_MAX : UINT64_MAX : \
+   sizeof(TC_a) == sizeof(int32_t) ? _issigned(TC_a) ? INT32_MAX : UINT32_MAX : \
+   sizeof(TC_a) == sizeof(int16_t) ? _issigned(TC_a) ? INT16_MAX : UINT16_MAX : \
+   _issigned(TC_a) ? INT8_MAX : UINT8_MAX))
 
 #if defined(_SYS_FREEBSD_) || defined(_SYS_NETBSD_) || defined(_SYS_OPENBSD_)
 #define nan(TC_a)      strtod("nan", NULL)
+#define nanl(TC_a)     ((long double)strtod("nan", NULL))
 #endif
 
 #if ! defined(PATH_MAX)
@@ -268,7 +282,9 @@
 #define PATH_MAX       4096
 #endif
 #endif
-
+#if ! defined(NAME_MAX)
+#define NAME_MAX       255
+#endif
 
 extern int _tc_dummy_cnt;
 

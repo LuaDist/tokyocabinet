@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The test cases of the B+ tree database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -134,7 +134,7 @@ int main(int argc, char **argv){
     usage();
   }
   if(rv != 0){
-    printf("FAILED:");
+    printf("FAILED: TCRNDSEED=%u PID=%d", g_randseed, (int)getpid());
     for(int i = 0; i < argc; i++){
       printf(" %s", argv[i]);
     }
@@ -196,8 +196,8 @@ static void mprint(TCBDB *bdb){
   if(bdb->hdb->cnt_writerec < 0) return;
   iprintf("max leaf member: %d\n", tcbdblmemb(bdb));
   iprintf("max node member: %d\n", tcbdbnmemb(bdb));
-  iprintf("leaf number: %d\n", tcbdblnum(bdb));
-  iprintf("node number: %d\n", tcbdbnnum(bdb));
+  iprintf("leaf number: %lld\n", (long long)tcbdblnum(bdb));
+  iprintf("node number: %lld\n", (long long)tcbdbnnum(bdb));
   iprintf("bucket number: %lld\n", (long long)tcbdbbnum(bdb));
   iprintf("used bucket number: %lld\n", (long long)tcbdbbnumused(bdb));
   iprintf("cnt_saveleaf: %lld\n", (long long)bdb->cnt_saveleaf);
@@ -1253,243 +1253,243 @@ static void *threadwicked(void *targ){
     char *rbuf;
     if(!nc) tcglobalmutexlock();
     switch(myrand(16)){
-    case 0:
-      if(id == 0) iputchar('0');
-      if(!tcbdbput(bdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(bdb, __LINE__, "tcbdbput");
-        err = true;
-      }
-      if(!nc) tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 1:
-      if(id == 0) iputchar('1');
-      if(!tcbdbput2(bdb, kbuf, vbuf)){
-        eprint(bdb, __LINE__, "tcbdbput2");
-        err = true;
-      }
-      if(!nc) tcmapput2(map, kbuf, vbuf);
-      break;
-    case 2:
-      if(id == 0) iputchar('2');
-      if(!tcbdbputkeep(bdb, kbuf, ksiz, vbuf, vsiz) && tcbdbecode(bdb) != TCEKEEP){
-        eprint(bdb, __LINE__, "tcbdbputkeep");
-        err = true;
-      }
-      if(!nc) tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 3:
-      if(id == 0) iputchar('3');
-      if(!tcbdbputkeep2(bdb, kbuf, vbuf) && tcbdbecode(bdb) != TCEKEEP){
-        eprint(bdb, __LINE__, "tcbdbputkeep2");
-        err = true;
-      }
-      if(!nc) tcmapputkeep2(map, kbuf, vbuf);
-      break;
-    case 4:
-      if(id == 0) iputchar('4');
-      if(!tcbdbputcat(bdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(bdb, __LINE__, "tcbdbputcat");
-        err = true;
-      }
-      if(!nc) tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 5:
-      if(id == 0) iputchar('5');
-      if(!tcbdbputcat2(bdb, kbuf, vbuf)){
-        eprint(bdb, __LINE__, "tcbdbputcat2");
-        err = true;
-      }
-      if(!nc) tcmapputcat2(map, kbuf, vbuf);
-      break;
-    case 6:
-      if(id == 0) iputchar('6');
-      if(nc){
-        if(!tcbdbputdup(bdb, kbuf, ksiz, vbuf, vsiz)){
-          eprint(bdb, __LINE__, "tcbdbputdup");
+      case 0:
+        if(id == 0) iputchar('0');
+        if(!tcbdbput(bdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(bdb, __LINE__, "tcbdbput");
           err = true;
         }
-      }
-      break;
-    case 7:
-      if(id == 0) iputchar('7');
-      if(nc){
-        if(!tcbdbputdup2(bdb, kbuf, vbuf)){
-          eprint(bdb, __LINE__, "tcbdbputdup2");
+        if(!nc) tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 1:
+        if(id == 0) iputchar('1');
+        if(!tcbdbput2(bdb, kbuf, vbuf)){
+          eprint(bdb, __LINE__, "tcbdbput2");
           err = true;
         }
-      }
-      break;
-    case 8:
-      if(id == 0) iputchar('8');
-      if(myrand(2) == 0){
-        if(!tcbdbout(bdb, kbuf, ksiz) && tcbdbecode(bdb) != TCENOREC){
-          eprint(bdb, __LINE__, "tcbdbout");
+        if(!nc) tcmapput2(map, kbuf, vbuf);
+        break;
+      case 2:
+        if(id == 0) iputchar('2');
+        if(!tcbdbputkeep(bdb, kbuf, ksiz, vbuf, vsiz) && tcbdbecode(bdb) != TCEKEEP){
+          eprint(bdb, __LINE__, "tcbdbputkeep");
           err = true;
         }
-        if(!nc) tcmapout(map, kbuf, ksiz);
-      }
-      break;
-    case 9:
-      if(id == 0) iputchar('9');
-      if(myrand(2) == 0){
-        if(!tcbdbout2(bdb, kbuf) && tcbdbecode(bdb) != TCENOREC){
-          eprint(bdb, __LINE__, "tcbdbout2");
+        if(!nc) tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 3:
+        if(id == 0) iputchar('3');
+        if(!tcbdbputkeep2(bdb, kbuf, vbuf) && tcbdbecode(bdb) != TCEKEEP){
+          eprint(bdb, __LINE__, "tcbdbputkeep2");
           err = true;
         }
-        if(!nc) tcmapout2(map, kbuf);
-      }
-      break;
-    case 10:
-      if(id == 0) iputchar('A');
-      if(!(rbuf = tcbdbget(bdb, kbuf, ksiz, &vsiz))){
-        if(tcbdbecode(bdb) != TCENOREC){
-          eprint(bdb, __LINE__, "tcbdbget");
+        if(!nc) tcmapputkeep2(map, kbuf, vbuf);
+        break;
+      case 4:
+        if(id == 0) iputchar('4');
+        if(!tcbdbputcat(bdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(bdb, __LINE__, "tcbdbputcat");
           err = true;
         }
-        rbuf = tcsprintf("[%d]", myrand(i + 1));
-        vsiz = strlen(rbuf);
-      }
-      vsiz += myrand(vsiz);
-      if(myrand(3) == 0) vsiz += PATH_MAX;
-      rbuf = tcrealloc(rbuf, vsiz + 1);
-      for(int j = 0; j < vsiz; j++){
-        rbuf[j] = myrand(0x100);
-      }
-      if(!tcbdbput(bdb, kbuf, ksiz, rbuf, vsiz)){
-        eprint(bdb, __LINE__, "tcbdbput");
-        err = true;
-      }
-      if(!nc) tcmapput(map, kbuf, ksiz, rbuf, vsiz);
-      tcfree(rbuf);
-      break;
-    case 11:
-      if(id == 0) iputchar('B');
-      if(!(rbuf = tcbdbget(bdb, kbuf, ksiz, &vsiz)) && tcbdbecode(bdb) != TCENOREC){
-        eprint(bdb, __LINE__, "tcbdbget");
-        err = true;
-      }
-      tcfree(rbuf);
-      break;
-    case 12:
-      if(id == 0) iputchar('C');
-      if(!(rbuf = tcbdbget2(bdb, kbuf)) && tcbdbecode(bdb) != TCENOREC){
-        eprint(bdb, __LINE__, "tcbdbget2");
-        err = true;
-      }
-      tcfree(rbuf);
-      break;
-    case 13:
-      if(id == 0) iputchar('D');
-      if(!tcbdbget3(bdb, kbuf, ksiz, &vsiz) && tcbdbecode(bdb) != TCENOREC){
-        eprint(bdb, __LINE__, "tcbdbget3");
-        err = true;
-      }
-      break;
-    case 14:
-      if(id == 0) iputchar('E');
-      if(myrand(rnum / 50) == 0){
-        switch(myrand(5)){
-        case 0:
-          if(!tcbdbcurfirst(cur) && tcbdbecode(bdb) != TCENOREC){
-            eprint(bdb, __LINE__, "tcbdbcurfirst");
+        if(!nc) tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 5:
+        if(id == 0) iputchar('5');
+        if(!tcbdbputcat2(bdb, kbuf, vbuf)){
+          eprint(bdb, __LINE__, "tcbdbputcat2");
+          err = true;
+        }
+        if(!nc) tcmapputcat2(map, kbuf, vbuf);
+        break;
+      case 6:
+        if(id == 0) iputchar('6');
+        if(nc){
+          if(!tcbdbputdup(bdb, kbuf, ksiz, vbuf, vsiz)){
+            eprint(bdb, __LINE__, "tcbdbputdup");
             err = true;
           }
-          break;
-        case 1:
-          if(!tcbdbcurlast(cur) && tcbdbecode(bdb) != TCENOREC){
-            eprint(bdb, __LINE__, "tcbdbcurlast");
+        }
+        break;
+      case 7:
+        if(id == 0) iputchar('7');
+        if(nc){
+          if(!tcbdbputdup2(bdb, kbuf, vbuf)){
+            eprint(bdb, __LINE__, "tcbdbputdup2");
             err = true;
           }
-          break;
-        default:
-          if(!tcbdbcurjump(cur, kbuf, ksiz) && tcbdbecode(bdb) != TCENOREC){
-            eprint(bdb, __LINE__, "tcbdbcurjump");
-            err = true;
-          }
-          break;
         }
-      }
-      TCXSTR *ikey = tcxstrnew();
-      TCXSTR *ival = tcxstrnew();
-      for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
-        if(j % 3 == 0){
-          if(!tcbdbcurrec(cur, ikey, ival)){
-            int ecode = tcbdbecode(bdb);
-            if(ecode != TCEINVALID && ecode != TCENOREC){
-              eprint(bdb, __LINE__, "tcbdbcurrec");
-              err = true;
-            }
-          }
-        } else {
-          int iksiz;
-          if(!tcbdbcurkey3(cur, &iksiz)){
-            int ecode = tcbdbecode(bdb);
-            if(ecode != TCEINVALID && ecode != TCENOREC){
-              eprint(bdb, __LINE__, "tcbdbcurkey3");
-              err = true;
-            }
-          }
-        }
-        if(myrand(5) == 0){
-          if(!tcbdbcurprev(cur)){
-            int ecode = tcbdbecode(bdb);
-            if(ecode != TCEINVALID && ecode != TCENOREC){
-              eprint(bdb, __LINE__, "tcbdbcurprev");
-              err = true;
-            }
-          }
-        } else {
-          if(!tcbdbcurnext(cur)){
-            int ecode = tcbdbecode(bdb);
-            if(ecode != TCEINVALID && ecode != TCENOREC){
-              eprint(bdb, __LINE__, "tcbdbcurnext");
-              err = true;
-            }
-          }
-        }
-      }
-      tcxstrdel(ival);
-      tcxstrdel(ikey);
-      break;
-    default:
-      if(id == 0) iputchar('@');
-      if(tcbdbtranbegin(bdb)){
+        break;
+      case 8:
+        if(id == 0) iputchar('8');
         if(myrand(2) == 0){
-          if(!tcbdbput(bdb, kbuf, ksiz, vbuf, vsiz)){
-            eprint(bdb, __LINE__, "tcbdbput");
-            err = true;
-          }
-          if(!nc) tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-        } else {
           if(!tcbdbout(bdb, kbuf, ksiz) && tcbdbecode(bdb) != TCENOREC){
             eprint(bdb, __LINE__, "tcbdbout");
             err = true;
           }
           if(!nc) tcmapout(map, kbuf, ksiz);
         }
-        if(nc && myrand(2) == 0){
-          if(!tcbdbtranabort(bdb)){
-            eprint(bdb, __LINE__, "tcbdbtranabort");
+        break;
+      case 9:
+        if(id == 0) iputchar('9');
+        if(myrand(2) == 0){
+          if(!tcbdbout2(bdb, kbuf) && tcbdbecode(bdb) != TCENOREC){
+            eprint(bdb, __LINE__, "tcbdbout2");
             err = true;
           }
-        } else {
-          if(!tcbdbtrancommit(bdb)){
-            eprint(bdb, __LINE__, "tcbdbtrancommit");
-            err = true;
-          }
+          if(!nc) tcmapout2(map, kbuf);
         }
-      } else {
-        eprint(bdb, __LINE__, "tcbdbtranbegin");
-        err = true;
-      }
-      if(myrand(1000) == 0){
-        if(!tcbdbforeach(bdb, iterfunc, NULL)){
-          eprint(bdb, __LINE__, "tcbdbforeach");
+        break;
+      case 10:
+        if(id == 0) iputchar('A');
+        if(!(rbuf = tcbdbget(bdb, kbuf, ksiz, &vsiz))){
+          if(tcbdbecode(bdb) != TCENOREC){
+            eprint(bdb, __LINE__, "tcbdbget");
+            err = true;
+          }
+          rbuf = tcsprintf("[%d]", myrand(i + 1));
+          vsiz = strlen(rbuf);
+        }
+        vsiz += myrand(vsiz);
+        if(myrand(3) == 0) vsiz += PATH_MAX;
+        rbuf = tcrealloc(rbuf, vsiz + 1);
+        for(int j = 0; j < vsiz; j++){
+          rbuf[j] = myrand(0x100);
+        }
+        if(!tcbdbput(bdb, kbuf, ksiz, rbuf, vsiz)){
+          eprint(bdb, __LINE__, "tcbdbput");
           err = true;
         }
-      }
-      if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
-      break;
+        if(!nc) tcmapput(map, kbuf, ksiz, rbuf, vsiz);
+        tcfree(rbuf);
+        break;
+      case 11:
+        if(id == 0) iputchar('B');
+        if(!(rbuf = tcbdbget(bdb, kbuf, ksiz, &vsiz)) && tcbdbecode(bdb) != TCENOREC){
+          eprint(bdb, __LINE__, "tcbdbget");
+          err = true;
+        }
+        tcfree(rbuf);
+        break;
+      case 12:
+        if(id == 0) iputchar('C');
+        if(!(rbuf = tcbdbget2(bdb, kbuf)) && tcbdbecode(bdb) != TCENOREC){
+          eprint(bdb, __LINE__, "tcbdbget2");
+          err = true;
+        }
+        tcfree(rbuf);
+        break;
+      case 13:
+        if(id == 0) iputchar('D');
+        if(!tcbdbget3(bdb, kbuf, ksiz, &vsiz) && tcbdbecode(bdb) != TCENOREC){
+          eprint(bdb, __LINE__, "tcbdbget3");
+          err = true;
+        }
+        break;
+      case 14:
+        if(id == 0) iputchar('E');
+        if(myrand(rnum / 50) == 0){
+          switch(myrand(5)){
+            case 0:
+              if(!tcbdbcurfirst(cur) && tcbdbecode(bdb) != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurfirst");
+                err = true;
+              }
+              break;
+            case 1:
+              if(!tcbdbcurlast(cur) && tcbdbecode(bdb) != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurlast");
+                err = true;
+              }
+              break;
+            default:
+              if(!tcbdbcurjump(cur, kbuf, ksiz) && tcbdbecode(bdb) != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurjump");
+                err = true;
+              }
+              break;
+          }
+        }
+        TCXSTR *ikey = tcxstrnew();
+        TCXSTR *ival = tcxstrnew();
+        for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
+          if(j % 3 == 0){
+            if(!tcbdbcurrec(cur, ikey, ival)){
+              int ecode = tcbdbecode(bdb);
+              if(ecode != TCEINVALID && ecode != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurrec");
+                err = true;
+              }
+            }
+          } else {
+            int iksiz;
+            if(!tcbdbcurkey3(cur, &iksiz)){
+              int ecode = tcbdbecode(bdb);
+              if(ecode != TCEINVALID && ecode != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurkey3");
+                err = true;
+              }
+            }
+          }
+          if(myrand(5) == 0){
+            if(!tcbdbcurprev(cur)){
+              int ecode = tcbdbecode(bdb);
+              if(ecode != TCEINVALID && ecode != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurprev");
+                err = true;
+              }
+            }
+          } else {
+            if(!tcbdbcurnext(cur)){
+              int ecode = tcbdbecode(bdb);
+              if(ecode != TCEINVALID && ecode != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurnext");
+                err = true;
+              }
+            }
+          }
+        }
+        tcxstrdel(ival);
+        tcxstrdel(ikey);
+        break;
+      default:
+        if(id == 0) iputchar('@');
+        if(tcbdbtranbegin(bdb)){
+          if(myrand(2) == 0){
+            if(!tcbdbput(bdb, kbuf, ksiz, vbuf, vsiz)){
+              eprint(bdb, __LINE__, "tcbdbput");
+              err = true;
+            }
+            if(!nc) tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+          } else {
+            if(!tcbdbout(bdb, kbuf, ksiz) && tcbdbecode(bdb) != TCENOREC){
+              eprint(bdb, __LINE__, "tcbdbout");
+              err = true;
+            }
+            if(!nc) tcmapout(map, kbuf, ksiz);
+          }
+          if(nc && myrand(2) == 0){
+            if(!tcbdbtranabort(bdb)){
+              eprint(bdb, __LINE__, "tcbdbtranabort");
+              err = true;
+            }
+          } else {
+            if(!tcbdbtrancommit(bdb)){
+              eprint(bdb, __LINE__, "tcbdbtrancommit");
+              err = true;
+            }
+          }
+        } else {
+          eprint(bdb, __LINE__, "tcbdbtranbegin");
+          err = true;
+        }
+        if(myrand(1000) == 0){
+          if(!tcbdbforeach(bdb, iterfunc, NULL)){
+            eprint(bdb, __LINE__, "tcbdbforeach");
+            err = true;
+          }
+        }
+        if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
+        break;
     }
     if(!nc) tcglobalmutexunlock();
     if(id == 0){
@@ -1553,81 +1553,81 @@ static void *threadtypical(void *targ){
       if(map) tcmapout(map, buf, len);
     } else if(rnd < 27){
       switch(myrand(3)){
-      case 0:
-        if(!tcbdbcurfirst(cur) && tcbdbecode(bdb) != TCENOREC){
-          eprint(bdb, __LINE__, "tcbdbcurfirst");
-          err = true;
-        }
-        for(int j = 0; !err && j < 10; j++){
-          int ksiz;
-          char *kbuf = tcbdbcurkey(cur, &ksiz);
-          if(kbuf){
-            int vsiz;
-            char *vbuf = tcbdbcurval(cur, &vsiz);
-            if(vbuf){
-              tcfree(vbuf);
-            } else if(tcbdbecode(bdb) != TCENOREC){
-              eprint(bdb, __LINE__, "tcbdbcurval");
-              err = true;
-            }
-            tcfree(kbuf);
-          } else if(tcbdbecode(bdb) != TCENOREC){
-            eprint(bdb, __LINE__, "tcbdbcurkey");
+        case 0:
+          if(!tcbdbcurfirst(cur) && tcbdbecode(bdb) != TCENOREC){
+            eprint(bdb, __LINE__, "tcbdbcurfirst");
             err = true;
           }
-          tcbdbcurnext(cur);
-        }
-        break;
-      case 1:
-        if(!tcbdbcurlast(cur) && tcbdbecode(bdb) != TCENOREC){
-          eprint(bdb, __LINE__, "tcbdbcurlast");
-          err = true;
-        }
-        for(int j = 0; !err && j < 10; j++){
-          int ksiz;
-          char *kbuf = tcbdbcurkey(cur, &ksiz);
-          if(kbuf){
-            int vsiz;
-            char *vbuf = tcbdbcurval(cur, &vsiz);
-            if(vbuf){
-              tcfree(vbuf);
+          for(int j = 0; !err && j < 10; j++){
+            int ksiz;
+            char *kbuf = tcbdbcurkey(cur, &ksiz);
+            if(kbuf){
+              int vsiz;
+              char *vbuf = tcbdbcurval(cur, &vsiz);
+              if(vbuf){
+                tcfree(vbuf);
+              } else if(tcbdbecode(bdb) != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurval");
+                err = true;
+              }
+              tcfree(kbuf);
             } else if(tcbdbecode(bdb) != TCENOREC){
-              eprint(bdb, __LINE__, "tcbdbcurval");
+              eprint(bdb, __LINE__, "tcbdbcurkey");
               err = true;
             }
-            tcfree(kbuf);
-          } else if(tcbdbecode(bdb) != TCENOREC){
-            eprint(bdb, __LINE__, "tcbdbcurkey");
+            tcbdbcurnext(cur);
+          }
+          break;
+        case 1:
+          if(!tcbdbcurlast(cur) && tcbdbecode(bdb) != TCENOREC){
+            eprint(bdb, __LINE__, "tcbdbcurlast");
             err = true;
           }
-          tcbdbcurprev(cur);
-        }
-        break;
-      case 2:
-        if(!tcbdbcurjump(cur, buf, len) && tcbdbecode(bdb) != TCENOREC){
-          eprint(bdb, __LINE__, "tcbdbcurjump");
-          err = true;
-        }
-        for(int j = 0; !err && j < 10; j++){
-          int ksiz;
-          char *kbuf = tcbdbcurkey(cur, &ksiz);
-          if(kbuf){
-            int vsiz;
-            char *vbuf = tcbdbcurval(cur, &vsiz);
-            if(vbuf){
-              tcfree(vbuf);
+          for(int j = 0; !err && j < 10; j++){
+            int ksiz;
+            char *kbuf = tcbdbcurkey(cur, &ksiz);
+            if(kbuf){
+              int vsiz;
+              char *vbuf = tcbdbcurval(cur, &vsiz);
+              if(vbuf){
+                tcfree(vbuf);
+              } else if(tcbdbecode(bdb) != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurval");
+                err = true;
+              }
+              tcfree(kbuf);
             } else if(tcbdbecode(bdb) != TCENOREC){
-              eprint(bdb, __LINE__, "tcbdbcurval");
+              eprint(bdb, __LINE__, "tcbdbcurkey");
               err = true;
             }
-            tcfree(kbuf);
-          } else if(tcbdbecode(bdb) != TCENOREC){
-            eprint(bdb, __LINE__, "tcbdbcurkey");
+            tcbdbcurprev(cur);
+          }
+          break;
+        case 2:
+          if(!tcbdbcurjump(cur, buf, len) && tcbdbecode(bdb) != TCENOREC){
+            eprint(bdb, __LINE__, "tcbdbcurjump");
             err = true;
           }
-          tcbdbcurnext(cur);
-        }
-        break;
+          for(int j = 0; !err && j < 10; j++){
+            int ksiz;
+            char *kbuf = tcbdbcurkey(cur, &ksiz);
+            if(kbuf){
+              int vsiz;
+              char *vbuf = tcbdbcurval(cur, &vsiz);
+              if(vbuf){
+                tcfree(vbuf);
+              } else if(tcbdbecode(bdb) != TCENOREC){
+                eprint(bdb, __LINE__, "tcbdbcurval");
+                err = true;
+              }
+              tcfree(kbuf);
+            } else if(tcbdbecode(bdb) != TCENOREC){
+              eprint(bdb, __LINE__, "tcbdbcurkey");
+              err = true;
+            }
+            tcbdbcurnext(cur);
+          }
+          break;
       }
     } else {
       int vsiz;

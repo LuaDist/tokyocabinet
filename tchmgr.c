@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The command line utility of the hash database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -134,7 +134,7 @@ static int printdata(const char *ptr, int size, bool px){
 static char *mygetline(FILE *ifp){
   int len = 0;
   int blen = 1024;
-  char *buf = tcmalloc(blen);
+  char *buf = tcmalloc(blen + 1);
   bool end = true;
   int c;
   while((c = fgetc(ifp)) != EOF){
@@ -543,10 +543,10 @@ static int procinform(const char *path, int omode){
   printf("path: %s\n", npath);
   const char *type = "(unknown)";
   switch(tchdbtype(hdb)){
-  case TCDBTHASH: type = "hash"; break;
-  case TCDBTBTREE: type = "btree"; break;
-  case TCDBTFIXED: type = "fixed"; break;
-  case TCDBTTABLE: type = "table"; break;
+    case TCDBTHASH: type = "hash"; break;
+    case TCDBTBTREE: type = "btree"; break;
+    case TCDBTFIXED: type = "fixed"; break;
+    case TCDBTTABLE: type = "table"; break;
   }
   printf("database type: %s\n", type);
   uint8_t flags = tchdbflags(hdb);
@@ -594,37 +594,45 @@ static int procput(const char *path, const char *kbuf, int ksiz, const char *vbu
     return 1;
   }
   bool err = false;
+  int inum;
+  double dnum;
   switch(dmode){
-  case -1:
-    if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(hdb);
-      err = true;
-    }
-    break;
-  case 1:
-    if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(hdb);
-      err = true;
-    }
-    break;
-  case 10:
-    if(tchdbaddint(hdb, kbuf, ksiz, tcatoi(vbuf)) == INT_MIN){
-      printerr(hdb);
-      err = true;
-    }
-    break;
-  case 11:
-    if(isnan(tchdbadddouble(hdb, kbuf, ksiz, tcatof(vbuf)))){
-      printerr(hdb);
-      err = true;
-    }
-    break;
-  default:
-    if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
-      printerr(hdb);
-      err = true;
-    }
-    break;
+    case -1:
+      if(!tchdbputkeep(hdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(hdb);
+        err = true;
+      }
+      break;
+    case 1:
+      if(!tchdbputcat(hdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(hdb);
+        err = true;
+      }
+      break;
+    case 10:
+      inum = tchdbaddint(hdb, kbuf, ksiz, tcatoi(vbuf));
+      if(inum == INT_MIN){
+        printerr(hdb);
+        err = true;
+      } else {
+        printf("%d\n", inum);
+      }
+      break;
+    case 11:
+      dnum = tchdbadddouble(hdb, kbuf, ksiz, tcatof(vbuf));
+      if(isnan(dnum)){
+        printerr(hdb);
+        err = true;
+      } else {
+        printf("%.6f\n", dnum);
+      }
+      break;
+    default:
+      if(!tchdbput(hdb, kbuf, ksiz, vbuf, vsiz)){
+        printerr(hdb);
+        err = true;
+      }
+      break;
   }
   if(!tchdbclose(hdb)){
     if(!err) printerr(hdb);
@@ -833,7 +841,7 @@ static int procimporttsv(const char *path, const char *file, int omode, bool sc)
 static int procversion(void){
   printf("Tokyo Cabinet version %s (%d:%s) for %s\n",
          tcversion, _TC_LIBVER, _TC_FORMATVER, TCSYSNAME);
-  printf("Copyright (C) 2006-2009 Mikio Hirabayashi\n");
+  printf("Copyright (C) 2006-2012 FAL Labs\n");
   return 0;
 }
 

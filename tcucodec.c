@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * Popular encoders and decoders of the utility API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -39,6 +39,7 @@ static int runxml(int argc, char **argv);
 static int runcstr(int argc, char **argv);
 static int runucs(int argc, char **argv);
 static int runhash(int argc, char **argv);
+static int runcipher(int argc, char **argv);
 static int rundate(int argc, char **argv);
 static int runtmpl(int argc, char **argv);
 static int runconf(int argc, char **argv);
@@ -56,6 +57,7 @@ static int procxml(const char *ibuf, int isiz, bool dec, bool br);
 static int proccstr(const char *ibuf, int isiz, bool dec, bool js);
 static int procucs(const char *ibuf, int isiz, bool dec, bool un, const char *kw);
 static int prochash(const char *ibuf, int isiz, bool crc, int ch);
+static int proccipher(const char *ibuf, int isiz, const char *key);
 static int procdate(const char *str, int jl, bool wf, bool rf);
 static int proctmpl(const char *ibuf, int isiz, TCMAP *vars);
 static int procconf(int mode);
@@ -92,6 +94,8 @@ int main(int argc, char **argv){
     rv = runucs(argc, argv);
   } else if(!strcmp(argv[1], "hash")){
     rv = runhash(argc, argv);
+  } else if(!strcmp(argv[1], "cipher")){
+    rv = runcipher(argc, argv);
   } else if(!strcmp(argv[1], "date")){
     rv = rundate(argc, argv);
   } else if(!strcmp(argv[1], "tmpl")){
@@ -124,6 +128,7 @@ static void usage(void){
   fprintf(stderr, "  %s cstr [-d] [-js] [file]\n", g_progname);
   fprintf(stderr, "  %s ucs [-d] [-un] [file]\n", g_progname);
   fprintf(stderr, "  %s hash [-crc] [-ch num] [file]\n", g_progname);
+  fprintf(stderr, "  %s cipher [-key str] [file]\n", g_progname);
   fprintf(stderr, "  %s date [-ds str] [-jl num] [-wf] [-rf]\n", g_progname);
   fprintf(stderr, "  %s tmpl [-var name val] [file]\n", g_progname);
   fprintf(stderr, "  %s conf [-v|-i|-l|-p]\n", g_progname);
@@ -661,6 +666,43 @@ static int runhash(int argc, char **argv){
 }
 
 
+/* parse arguments of cipher command */
+static int runcipher(int argc, char **argv){
+  char *path = NULL;
+  char *key = NULL;
+  for(int i = 2; i < argc; i++){
+    if(!path && argv[i][0] == '-'){
+      if(!strcmp(argv[i], "-key")){
+        if(++i >= argc) usage();
+        key = argv[i];
+      } else {
+        usage();
+      }
+    } else if(!path){
+      path = argv[i];
+    } else {
+      usage();
+    }
+  }
+  char *ibuf;
+  int isiz;
+  if(path && path[0] == '@'){
+    isiz = strlen(path) - 1;
+    ibuf = tcmemdup(path + 1, isiz);
+  } else {
+    ibuf = tcreadfile(path, -1, &isiz);
+  }
+  if(!ibuf){
+    eprintf("%s: cannot open", path ? path : "(stdin)");
+    return 1;
+  }
+  int rv = proccipher(ibuf, isiz, key);
+  if(path && path[0] == '@') printf("\n");
+  tcfree(ibuf);
+  return rv;
+}
+
+
 /* parse arguments of date command */
 static int rundate(int argc, char **argv){
   char *str = NULL;
@@ -1153,6 +1195,22 @@ static int prochash(const char *ibuf, int isiz, bool crc, int ch){
 }
 
 
+/* perform cipher command */
+static int proccipher(const char *ibuf, int isiz, const char *key){
+  char *obuf = tcmalloc(isiz + 1);
+  const char *kbuf = "";
+  int ksiz = 0;
+  if(key){
+    kbuf = key;
+    ksiz = strlen(key);
+  }
+  tcarccipher(ibuf, isiz, kbuf, ksiz, obuf);
+  fwrite(obuf, 1, isiz, stdout);
+  tcfree(obuf);
+  return 0;
+}
+
+
 /* perform date command */
 static int procdate(const char *str, int jl, bool wf, bool rf){
   int64_t t = str ? tcstrmktime(str) : time(NULL);
@@ -1186,83 +1244,110 @@ static int proctmpl(const char *ibuf, int isiz, TCMAP *vars){
 /* perform conf command */
 static int procconf(int mode){
   switch(mode){
-  case 'v':
-    printf("%s\n", tcversion);
-    break;
-  case 'i':
-    printf("%s\n", _TC_APPINC);
-    break;
-  case 'l':
-    printf("%s\n", _TC_APPLIBS);
-    break;
-  case 'p':
-    printf("%s\n", _TC_BINDIR);
-    break;
-  default:
-    printf("myconf(version): %s\n", tcversion);
-    printf("myconf(sysname): %s\n", TCSYSNAME);
-    printf("myconf(libver): %d\n", _TC_LIBVER);
-    printf("myconf(formatver): %s\n", _TC_FORMATVER);
-    printf("myconf(prefix): %s\n", _TC_PREFIX);
-    printf("myconf(includedir): %s\n", _TC_INCLUDEDIR);
-    printf("myconf(libdir): %s\n", _TC_LIBDIR);
-    printf("myconf(bindir): %s\n", _TC_BINDIR);
-    printf("myconf(libexecdir): %s\n", _TC_LIBEXECDIR);
-    printf("myconf(appinc): %s\n", _TC_APPINC);
-    printf("myconf(applibs): %s\n", _TC_APPLIBS);
-    printf("myconf(bigend): %d\n", TCBIGEND);
-    printf("myconf(usezlib): %d\n", TCUSEZLIB);
-    printf("myconf(usebzip): %d\n", TCUSEBZIP);
-    printf("sizeof(bool): %d\n", sizeof(bool));
-    printf("sizeof(char): %d\n", sizeof(char));
-    printf("sizeof(short): %d\n", sizeof(short));
-    printf("sizeof(int): %d\n", sizeof(int));
-    printf("sizeof(long): %d\n", sizeof(long));
-    printf("sizeof(long long): %d\n", sizeof(long long));
-    printf("sizeof(float): %d\n", sizeof(float));
-    printf("sizeof(double): %d\n", sizeof(double));
-    printf("sizeof(long double): %d\n", sizeof(long double));
-    printf("sizeof(void *): %d\n", sizeof(void *));
-    printf("sizeof(intptr_t): %d\n", sizeof(intptr_t));
-    printf("sizeof(size_t): %d\n", sizeof(size_t));
-    printf("sizeof(time_t): %d\n", sizeof(time_t));
-    printf("sizeof(off_t): %d\n", sizeof(off_t));
-    printf("sizeof(ino_t): %d\n", sizeof(ino_t));
-    printf("sizeof(wchar_t): %d\n", sizeof(wchar_t));
-    printf("sizeof(sig_atomic_t): %d\n", sizeof(sig_atomic_t));
-    printf("macro(CHAR_MAX): %llu\n", (unsigned long long)CHAR_MAX);
-    printf("macro(SHRT_MAX): %llu\n", (unsigned long long)SHRT_MAX);
-    printf("macro(INT_MAX): %llu\n", (unsigned long long)INT_MAX);
-    printf("macro(LONG_MAX): %llu\n", (unsigned long long)LONG_MAX);
-    printf("macro(LLONG_MAX): %llu\n", (unsigned long long)LLONG_MAX);
-    printf("macro(FLT_MAX): %g\n", (double)FLT_MAX);
-    printf("macro(DBL_MAX): %g\n", (double)DBL_MAX);
-    printf("macro(LDBL_MAX): %Lg\n", (long double)LDBL_MAX);
-    printf("macro(PATH_MAX): %llu\n", (unsigned long long)PATH_MAX);
-    printf("macro(RAND_MAX): %llu\n", (unsigned long long)RAND_MAX);
-    printf("sysconf(_SC_CLK_TCK): %ld\n", sysconf(_SC_CLK_TCK));
-    printf("sysconf(_SC_OPEN_MAX): %ld\n", sysconf(_SC_OPEN_MAX));
-    printf("sysconf(_SC_PAGESIZE): %ld\n", sysconf(_SC_PAGESIZE));
-    TCMAP *info = tcsysinfo();
-    if(info){
-      const char *val = tcmapget2(info, "size");
-      if(val) printf("sysinfo(size): %s\n", val);
-      val = tcmapget2(info, "rss");
-      if(val) printf("sysinfo(rss): %s\n", val);
-      val = tcmapget2(info, "total");
-      if(val) printf("sysinfo(total): %s\n", val);
-      val = tcmapget2(info, "free");
-      if(val) printf("sysinfo(free): %s\n", val);
-      val = tcmapget2(info, "cached");
-      if(val) printf("sysinfo(cached): %s\n", val);
-      tcmapdel(info);
-    }
-    struct stat sbuf;
-    if(stat(MYCDIRSTR, &sbuf) == 0){
-      printf("stat(st_uid): %d\n", (int)sbuf.st_uid);
-      printf("stat(st_gid): %d\n", (int)sbuf.st_gid);
-      printf("stat(st_blksize): %d\n", (int)sbuf.st_blksize);
-    }
+    case 'v':
+      printf("%s\n", tcversion);
+      break;
+    case 'i':
+      printf("%s\n", _TC_APPINC);
+      break;
+    case 'l':
+      printf("%s\n", _TC_APPLIBS);
+      break;
+    case 'p':
+      printf("%s\n", _TC_BINDIR);
+      break;
+    default:
+      printf("myconf(version): %s\n", tcversion);
+      printf("myconf(sysname): %s\n", TCSYSNAME);
+      printf("myconf(libver): %d\n", _TC_LIBVER);
+      printf("myconf(formatver): %s\n", _TC_FORMATVER);
+      printf("myconf(prefix): %s\n", _TC_PREFIX);
+      printf("myconf(includedir): %s\n", _TC_INCLUDEDIR);
+      printf("myconf(libdir): %s\n", _TC_LIBDIR);
+      printf("myconf(bindir): %s\n", _TC_BINDIR);
+      printf("myconf(libexecdir): %s\n", _TC_LIBEXECDIR);
+      printf("myconf(appinc): %s\n", _TC_APPINC);
+      printf("myconf(applibs): %s\n", _TC_APPLIBS);
+      printf("myconf(bigend): %d\n", TCBIGEND);
+      printf("myconf(usezlib): %d\n", TCUSEZLIB);
+      printf("myconf(usebzip): %d\n", TCUSEBZIP);
+      printf("type(bool): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(bool), (int)_alignof(bool), TCALIGNOF(bool),
+             (unsigned long long)true);
+      printf("type(char): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(char), (int)_alignof(char), TCALIGNOF(char),
+             (unsigned long long)CHAR_MAX);
+      printf("type(short): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(short), (int)_alignof(short), TCALIGNOF(short),
+             (unsigned long long)SHRT_MAX);
+      printf("type(int): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(int), (int)_alignof(int), TCALIGNOF(int),
+             (unsigned long long)INT_MAX);
+      printf("type(long): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(long), (int)_alignof(long), TCALIGNOF(long),
+             (unsigned long long)LONG_MAX);
+      printf("type(long long): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(long long), (int)_alignof(long long), TCALIGNOF(long long),
+             (unsigned long long)LLONG_MAX);
+      printf("type(float): size=%d align=%d offset=%d max=%g\n",
+             (int)sizeof(float), (int)_alignof(float), TCALIGNOF(float),
+             (double)FLT_MAX);
+      printf("type(double): size=%d align=%d offset=%d max=%g\n",
+             (int)sizeof(double), (int)_alignof(double), TCALIGNOF(double),
+             (double)DBL_MAX);
+      printf("type(long double): size=%d align=%d offset=%d max=%Lg\n",
+             (int)sizeof(long double), (int)_alignof(long double), TCALIGNOF(long double),
+             (long double)LDBL_MAX);
+      printf("type(void *): size=%d align=%d offset=%d\n",
+             (int)sizeof(void *), (int)_alignof(void *), TCALIGNOF(void *));
+      printf("type(intptr_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(intptr_t), (int)_alignof(intptr_t), TCALIGNOF(intptr_t),
+             (unsigned long long)INTPTR_MAX);
+      printf("type(size_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(size_t), (int)_alignof(size_t), TCALIGNOF(size_t),
+             (unsigned long long)SIZE_MAX);
+      printf("type(ptrdiff_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(ptrdiff_t), (int)_alignof(ptrdiff_t), TCALIGNOF(ptrdiff_t),
+             (unsigned long long)PTRDIFF_MAX);
+      printf("type(wchar_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(wchar_t), (int)_alignof(wchar_t), TCALIGNOF(wchar_t),
+             (unsigned long long)WCHAR_MAX);
+      printf("type(sig_atomic_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(sig_atomic_t), (int)_alignof(sig_atomic_t), TCALIGNOF(sig_atomic_t),
+             (unsigned long long)SIG_ATOMIC_MAX);
+      printf("type(time_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(time_t), (int)_alignof(time_t), TCALIGNOF(time_t),
+             (unsigned long long)_maxof(time_t));
+      printf("type(off_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(off_t), (int)_alignof(off_t), TCALIGNOF(off_t),
+             (unsigned long long)_maxof(off_t));
+      printf("type(ino_t): size=%d align=%d offset=%d max=%llu\n",
+             (int)sizeof(ino_t), (int)_alignof(ino_t), TCALIGNOF(ino_t),
+             (unsigned long long)_maxof(ino_t));
+      printf("type(tcgeneric_t): size=%d align=%d offset=%d\n",
+             (int)sizeof(tcgeneric_t), (int)_alignof(tcgeneric_t), TCALIGNOF(tcgeneric_t));
+      printf("macro(RAND_MAX): %llu\n", (unsigned long long)RAND_MAX);
+      printf("macro(PATH_MAX): %llu\n", (unsigned long long)PATH_MAX);
+      printf("macro(NAME_MAX): %llu\n", (unsigned long long)NAME_MAX);
+      printf("macro(P_tmpdir): %s\n", P_tmpdir);
+      printf("sysconf(_SC_CLK_TCK): %ld\n", sysconf(_SC_CLK_TCK));
+      printf("sysconf(_SC_OPEN_MAX): %ld\n", sysconf(_SC_OPEN_MAX));
+      printf("sysconf(_SC_PAGESIZE): %ld\n", sysconf(_SC_PAGESIZE));
+      TCMAP *info = tcsysinfo();
+      if(info){
+        tcmapiterinit(info);
+        const char *name;
+        while((name = tcmapiternext2(info)) != NULL){
+          printf("sysinfo(%s): %s\n", name, tcmapiterval2(name));
+        }
+        tcmapdel(info);
+      }
+      struct stat sbuf;
+      if(stat(MYCDIRSTR, &sbuf) == 0){
+        printf("stat(st_uid): %d\n", (int)sbuf.st_uid);
+        printf("stat(st_gid): %d\n", (int)sbuf.st_gid);
+        printf("stat(st_blksize): %d\n", (int)sbuf.st_blksize);
+      }
   }
   return 0;
 }

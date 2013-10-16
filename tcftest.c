@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The test cases of the fixed-length database API
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -81,7 +81,7 @@ int main(int argc, char **argv){
     usage();
   }
   if(rv != 0){
-    printf("FAILED:");
+    printf("FAILED: TCRNDSEED=%u PID=%d", g_randseed, (int)getpid());
     for(int i = 0; i < argc; i++){
       printf(" %s", argv[i]);
     }
@@ -179,14 +179,14 @@ static void *pdprocfunc(const void *vbuf, int vsiz, int *sp, void *op){
     char *buf = NULL;
     int len = 0;
     switch((int)(intptr_t)op){
-    case 1:
-      len = vsiz + 1;
-      buf = tcmalloc(len + 1);
-      memset(buf, '*', len);
-      break;
-    case 2:
-      buf = (void *)-1;
-      break;
+      case 1:
+        len = vsiz + 1;
+        buf = tcmalloc(len + 1);
+        memset(buf, '*', len);
+        break;
+      case 2:
+        buf = (void *)-1;
+        break;
     }
     *sp = len;
     return buf;
@@ -652,57 +652,57 @@ static int procrcat(const char *path, int rnum, int width, int64_t limsiz,
     } else if(ru){
       int id = myrand(pnum) + 1;
       switch(myrand(8)){
-      case 0:
-        if(!tcfdbput(fdb, id, kbuf, ksiz)){
-          eprint(fdb, __LINE__, "tcfdbput");
-          err = true;
-        }
-        break;
-      case 1:
-        if(!tcfdbputkeep(fdb, id, kbuf, ksiz) && tcfdbecode(fdb) != TCEKEEP){
-          eprint(fdb, __LINE__, "tcfdbputkeep");
-          err = true;
-        }
-        break;
-      case 2:
-        if(!tcfdbout(fdb, id) && tcfdbecode(fdb) != TCENOREC){
-          eprint(fdb, __LINE__, "tcfdbout");
-          err = true;
-        }
-        break;
-      case 3:
-        if(tcfdbaddint(fdb, id, 1) == INT_MIN && tcfdbecode(fdb) != TCEKEEP){
-          eprint(fdb, __LINE__, "tcfdbaddint");
-          err = true;
-        }
-        break;
-      case 4:
-        if(isnan(tcfdbadddouble(fdb, id, 1.0)) && tcfdbecode(fdb) != TCEKEEP){
-          eprint(fdb, __LINE__, "tcfdbadddouble");
-          err = true;
-        }
-        break;
-      case 5:
-        if(myrand(2) == 0){
-          if(!tcfdbputproc(fdb, id, kbuf, ksiz, pdprocfunc, NULL) &&
-             tcfdbecode(fdb) != TCEKEEP){
-            eprint(fdb, __LINE__, "tcfdbputproc");
+        case 0:
+          if(!tcfdbput(fdb, id, kbuf, ksiz)){
+            eprint(fdb, __LINE__, "tcfdbput");
             err = true;
           }
-        } else {
-          if(!tcfdbputproc(fdb, id, NULL, 0, pdprocfunc, NULL) &&
-             tcfdbecode(fdb) != TCEKEEP && tcfdbecode(fdb) != TCENOREC){
-            eprint(fdb, __LINE__, "tcfdbputproc");
+          break;
+        case 1:
+          if(!tcfdbputkeep(fdb, id, kbuf, ksiz) && tcfdbecode(fdb) != TCEKEEP){
+            eprint(fdb, __LINE__, "tcfdbputkeep");
             err = true;
           }
-        }
-        break;
-      default:
-        if(!tcfdbputcat(fdb, id, kbuf, ksiz)){
-          eprint(fdb, __LINE__, "tcfdbputcat");
-          err = true;
-        }
-        break;
+          break;
+        case 2:
+          if(!tcfdbout(fdb, id) && tcfdbecode(fdb) != TCENOREC){
+            eprint(fdb, __LINE__, "tcfdbout");
+            err = true;
+          }
+          break;
+        case 3:
+          if(tcfdbaddint(fdb, id, 1) == INT_MIN && tcfdbecode(fdb) != TCEKEEP){
+            eprint(fdb, __LINE__, "tcfdbaddint");
+            err = true;
+          }
+          break;
+        case 4:
+          if(isnan(tcfdbadddouble(fdb, id, 1.0)) && tcfdbecode(fdb) != TCEKEEP){
+            eprint(fdb, __LINE__, "tcfdbadddouble");
+            err = true;
+          }
+          break;
+        case 5:
+          if(myrand(2) == 0){
+            if(!tcfdbputproc(fdb, id, kbuf, ksiz, pdprocfunc, NULL) &&
+               tcfdbecode(fdb) != TCEKEEP){
+              eprint(fdb, __LINE__, "tcfdbputproc");
+              err = true;
+            }
+          } else {
+            if(!tcfdbputproc(fdb, id, NULL, 0, pdprocfunc, NULL) &&
+               tcfdbecode(fdb) != TCEKEEP && tcfdbecode(fdb) != TCENOREC){
+              eprint(fdb, __LINE__, "tcfdbputproc");
+              err = true;
+            }
+          }
+          break;
+        default:
+          if(!tcfdbputcat(fdb, id, kbuf, ksiz)){
+            eprint(fdb, __LINE__, "tcfdbputcat");
+            err = true;
+          }
+          break;
       }
       if(err) break;
     } else {
@@ -905,24 +905,24 @@ static int procmisc(const char *path, int rnum, bool mt, int omode){
     char *vbuf = tcmalloc(vsiz + 1);
     memset(vbuf, '*', vsiz);
     switch(myrand(3)){
-    case 0:
-      if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbput");
-        err = true;
-      }
-      break;
-    case 1:
-      if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbputcat");
-        err = true;
-      }
-      break;
-    case 2:
-      if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
-        eprint(fdb, __LINE__, "tcfdbout");
-        err = true;
-      }
-      break;
+      case 0:
+        if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbput");
+          err = true;
+        }
+        break;
+      case 1:
+        if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbputcat");
+          err = true;
+        }
+        break;
+      case 2:
+        if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
+          eprint(fdb, __LINE__, "tcfdbout");
+          err = true;
+        }
+        break;
     }
     tcfree(vbuf);
     if(rnum > 250 && i % (rnum / 250) == 0){
@@ -1068,34 +1068,34 @@ static int procmisc(const char *path, int rnum, bool mt, int omode){
     char vbuf[RECBUFSIZ];
     int vsiz = sprintf(vbuf, "%d", myrand(rnum) + 1);
     switch(myrand(7)){
-    case 0:
-      if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbput2");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 1:
-      if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbputkeep2");
-        err = true;
-      }
-      tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 2:
-      if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbputcat2");
-        err = true;
-      }
-      tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 3:
-      if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
-        eprint(fdb, __LINE__, "tcfdbout2");
-        err = true;
-      }
-      tcmapout(map, kbuf, ksiz);
-      break;
+      case 0:
+        if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbput2");
+          err = true;
+        }
+        tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 1:
+        if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbputkeep2");
+          err = true;
+        }
+        tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 2:
+        if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbputcat2");
+          err = true;
+        }
+        tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 3:
+        if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
+          eprint(fdb, __LINE__, "tcfdbout2");
+          err = true;
+        }
+        tcmapout(map, kbuf, ksiz);
+        break;
     }
     if(rnum > 250 && i % (rnum / 250) == 0){
       iputchar('.');
@@ -1113,68 +1113,70 @@ static int procmisc(const char *path, int rnum, bool mt, int omode){
     char vbuf[RECBUFSIZ];
     int vsiz = sprintf(vbuf, "[%d]", myrand(rnum) + 1);
     switch(myrand(7)){
-    case 0:
-      if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbput2");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 1:
-      if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbputkeep2");
-        err = true;
-      }
-      tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 2:
-      if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbputcat2");
-        err = true;
-      }
-      tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 3:
-      if(tcfdbaddint(fdb, tcfdbkeytoid(kbuf, ksiz), 1) == INT_MIN && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbaddint");
-        err = true;
-      }
-      tcmapaddint(map, kbuf, ksiz, 1);
-      break;
-    case 4:
-      if(isnan(tcfdbadddouble(fdb, tcfdbkeytoid(kbuf, ksiz), 1.0)) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbadddouble");
-        err = true;
-      }
-      tcmapadddouble(map, kbuf, ksiz, 1.0);
-      break;
-    case 5:
-      if(myrand(2) == 0){
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), vbuf, vsiz, pdprocfunc, op) &&
+      case 0:
+        if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbput2");
+          err = true;
+        }
+        tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 1:
+        if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbputkeep2");
+          err = true;
+        }
+        tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 2:
+        if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbputcat2");
+          err = true;
+        }
+        tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 3:
+        if(tcfdbaddint(fdb, tcfdbkeytoid(kbuf, ksiz), 1) == INT_MIN &&
            tcfdbecode(fdb) != TCEKEEP){
-          eprint(fdb, __LINE__, "tcfdbputproc");
+          eprint(fdb, __LINE__, "tcfdbaddint");
           err = true;
         }
-        tcmapputproc(map, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op);
-      } else {
-        vsiz = myrand(10);
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), NULL, vsiz, pdprocfunc, op) &&
-           tcfdbecode(fdb) != TCEKEEP && tcfdbecode(fdb) != TCENOREC){
-          eprint(fdb, __LINE__, "tcfdbputproc");
+        tcmapaddint(map, kbuf, ksiz, 1);
+        break;
+      case 4:
+        if(isnan(tcfdbadddouble(fdb, tcfdbkeytoid(kbuf, ksiz), 1.0)) &&
+           tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbadddouble");
           err = true;
         }
-        tcmapputproc(map, kbuf, ksiz, NULL, vsiz, pdprocfunc, op);
-      }
-      break;
-    case 6:
-      if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
-        eprint(fdb, __LINE__, "tcfdbout2");
-        err = true;
-      }
-      tcmapout(map, kbuf, ksiz);
-      break;
+        tcmapadddouble(map, kbuf, ksiz, 1.0);
+        break;
+      case 5:
+        if(myrand(2) == 0){
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), vbuf, vsiz, pdprocfunc, op) &&
+             tcfdbecode(fdb) != TCEKEEP){
+            eprint(fdb, __LINE__, "tcfdbputproc");
+            err = true;
+          }
+          tcmapputproc(map, kbuf, ksiz, vbuf, vsiz, pdprocfunc, op);
+        } else {
+          vsiz = myrand(10);
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), NULL, vsiz, pdprocfunc, op) &&
+             tcfdbecode(fdb) != TCEKEEP && tcfdbecode(fdb) != TCENOREC){
+            eprint(fdb, __LINE__, "tcfdbputproc");
+            err = true;
+          }
+          tcmapputproc(map, kbuf, ksiz, NULL, vsiz, pdprocfunc, op);
+        }
+        break;
+      case 6:
+        if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
+          eprint(fdb, __LINE__, "tcfdbout2");
+          err = true;
+        }
+        tcmapout(map, kbuf, ksiz);
+        break;
     }
     if(rnum > 250 && i % (rnum / 250) == 0){
       iputchar('.');
@@ -1198,60 +1200,62 @@ static int procmisc(const char *path, int rnum, bool mt, int omode){
     char vbuf[RECBUFSIZ];
     int vsiz = sprintf(vbuf, "[%d]", myrand(rnum) + 1);
     switch(myrand(7)){
-    case 0:
-      if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbput2");
-        err = true;
-      }
-      break;
-    case 1:
-      if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbputkeep2");
-        err = true;
-      }
-      break;
-    case 2:
-      if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbputcat2");
-        err = true;
-      }
-      break;
-    case 3:
-      if(tcfdbaddint(fdb, tcfdbkeytoid(kbuf, ksiz), 1) == INT_MIN && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbaddint");
-        err = true;
-      }
-      break;
-    case 4:
-      if(isnan(tcfdbadddouble(fdb, tcfdbkeytoid(kbuf, ksiz), 1.0)) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbadddouble");
-        err = true;
-      }
-      break;
-    case 5:
-      if(myrand(2) == 0){
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), vbuf, vsiz, pdprocfunc, op) &&
+      case 0:
+        if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbput2");
+          err = true;
+        }
+        break;
+      case 1:
+        if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbputkeep2");
+          err = true;
+        }
+        break;
+      case 2:
+        if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbputcat2");
+          err = true;
+        }
+        break;
+      case 3:
+        if(tcfdbaddint(fdb, tcfdbkeytoid(kbuf, ksiz), 1) == INT_MIN &&
            tcfdbecode(fdb) != TCEKEEP){
-          eprint(fdb, __LINE__, "tcfdbputproc");
+          eprint(fdb, __LINE__, "tcfdbaddint");
           err = true;
         }
-      } else {
-        vsiz = myrand(10);
-        void *op = (void *)(intptr_t)(myrand(3) + 1);
-        if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), NULL, vsiz, pdprocfunc, op) &&
-           tcfdbecode(fdb) != TCEKEEP && tcfdbecode(fdb) != TCENOREC){
-          eprint(fdb, __LINE__, "tcfdbputproc");
+        break;
+      case 4:
+        if(isnan(tcfdbadddouble(fdb, tcfdbkeytoid(kbuf, ksiz), 1.0)) &&
+           tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbadddouble");
           err = true;
         }
-      }
-      break;
-    case 6:
-      if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
-        eprint(fdb, __LINE__, "tcfdbout2");
-        err = true;
-      }
-      break;
+        break;
+      case 5:
+        if(myrand(2) == 0){
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), vbuf, vsiz, pdprocfunc, op) &&
+             tcfdbecode(fdb) != TCEKEEP){
+            eprint(fdb, __LINE__, "tcfdbputproc");
+            err = true;
+          }
+        } else {
+          vsiz = myrand(10);
+          void *op = (void *)(intptr_t)(myrand(3) + 1);
+          if(!tcfdbputproc(fdb, tcfdbkeytoid(kbuf, ksiz), NULL, vsiz, pdprocfunc, op) &&
+             tcfdbecode(fdb) != TCEKEEP && tcfdbecode(fdb) != TCENOREC){
+            eprint(fdb, __LINE__, "tcfdbputproc");
+            err = true;
+          }
+        }
+        break;
+      case 6:
+        if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
+          eprint(fdb, __LINE__, "tcfdbout2");
+          err = true;
+        }
+        break;
     }
     if(rnum > 250 && i % (rnum / 250) == 0){
       iputchar('.');
@@ -1402,163 +1406,163 @@ static int procwicked(const char *path, int rnum, bool mt, int omode){
     vbuf[vsiz] = '\0';
     char *rbuf;
     switch(myrand(16)){
-    case 0:
-      iputchar('0');
-      if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbput2");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 1:
-      iputchar('1');
-      if(!tcfdbput3(fdb, kbuf, vbuf)){
-        eprint(fdb, __LINE__, "tcfdbput3");
-        err = true;
-      }
-      tcmapput2(map, kbuf, vbuf);
-      break;
-    case 2:
-      iputchar('2');
-      if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbputkeep2");
-        err = true;
-      }
-      tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 3:
-      iputchar('3');
-      if(!tcfdbputkeep3(fdb, kbuf, vbuf) && tcfdbecode(fdb) != TCEKEEP){
-        eprint(fdb, __LINE__, "tcfdbputkeep3");
-        err = true;
-      }
-      tcmapputkeep2(map, kbuf, vbuf);
-      break;
-    case 4:
-      iputchar('4');
-      if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbputcat2");
-        err = true;
-      }
-      tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
-      break;
-    case 5:
-      iputchar('5');
-      if(!tcfdbputcat3(fdb, kbuf, vbuf)){
-        eprint(fdb, __LINE__, "tcfdbputcat3");
-        err = true;
-      }
-      tcmapputcat2(map, kbuf, vbuf);
-      break;
-    case 6:
-      iputchar('6');
-      if(myrand(10) == 0){
-        if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
-          eprint(fdb, __LINE__, "tcfdbout2");
+      case 0:
+        iputchar('0');
+        if(!tcfdbput2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbput2");
           err = true;
         }
-        tcmapout(map, kbuf, ksiz);
-      }
-      break;
-    case 7:
-      iputchar('7');
-      if(myrand(10) == 0){
-        if(!tcfdbout3(fdb, kbuf) && tcfdbecode(fdb) != TCENOREC){
-          eprint(fdb, __LINE__, "tcfdbout3");
+        tcmapput(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 1:
+        iputchar('1');
+        if(!tcfdbput3(fdb, kbuf, vbuf)){
+          eprint(fdb, __LINE__, "tcfdbput3");
           err = true;
         }
-        tcmapout2(map, kbuf);
-      }
-      break;
-    case 8:
-      iputchar('8');
-      if(!(rbuf = tcfdbget2(fdb, kbuf, ksiz, &vsiz))){
-        if(tcfdbecode(fdb) != TCENOREC){
-          eprint(fdb, __LINE__, "tcfdbget2");
+        tcmapput2(map, kbuf, vbuf);
+        break;
+      case 2:
+        iputchar('2');
+        if(!tcfdbputkeep2(fdb, kbuf, ksiz, vbuf, vsiz) && tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbputkeep2");
           err = true;
         }
-        rbuf = tcsprintf("[%d]", myrand(i + 1));
-        vsiz = strlen(rbuf);
-      }
-      vsiz += myrand(vsiz);
-      rbuf = tcrealloc(rbuf, vsiz + 1);
-      for(int j = 0; j < vsiz; j++){
-        rbuf[j] = myrand(0x100);
-      }
-      if(!tcfdbput2(fdb, kbuf, ksiz, rbuf, vsiz)){
-        eprint(fdb, __LINE__, "tcfdbput2");
-        err = true;
-      }
-      tcmapput(map, kbuf, ksiz, rbuf, vsiz);
-      tcfree(rbuf);
-      break;
-    case 9:
-      iputchar('9');
-      if(!(rbuf = tcfdbget2(fdb, kbuf, ksiz, &vsiz)) && tcfdbecode(fdb) != TCENOREC){
-        eprint(fdb, __LINE__, "tcfdbget2");
-        err = true;
-      }
-      tcfree(rbuf);
-      break;
-    case 10:
-      iputchar('A');
-      if(!(rbuf = tcfdbget3(fdb, kbuf)) && tcfdbecode(fdb) != TCENOREC){
-        eprint(fdb, __LINE__, "tcfdbget3");
-        err = true;
-      }
-      tcfree(rbuf);
-      break;
-    case 11:
-      iputchar('B');
-      if(myrand(1) == 0) vsiz = 1;
-      if((vsiz = tcfdbget4(fdb, id, vbuf, vsiz)) < 0 && tcfdbecode(fdb) != TCENOREC){
-        eprint(fdb, __LINE__, "tcfdbget4");
-        err = true;
-      }
-      break;
-    case 12:
-      iputchar('C');
-      if(myrand(rnum / 128) == 0){
-        if(myrand(2) == 0){
-          if(!tcfdbiterinit(fdb)){
-            eprint(fdb, __LINE__, "tcfdbiterinit");
-            err = true;
-          }
-        } else {
-          if(!tcfdbiterinit2(fdb, myrand(rnum) + 1) && tcfdbecode(fdb) != TCENOREC){
-            eprint(fdb, __LINE__, "tcfdbiterinit2");
-            err = true;
-          }
+        tcmapputkeep(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 3:
+        iputchar('3');
+        if(!tcfdbputkeep3(fdb, kbuf, vbuf) && tcfdbecode(fdb) != TCEKEEP){
+          eprint(fdb, __LINE__, "tcfdbputkeep3");
+          err = true;
         }
-      }
-      for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
-        if(tcfdbiternext(fdb) < 0){
-          int ecode = tcfdbecode(fdb);
-          if(ecode != TCEINVALID && ecode != TCENOREC){
-            eprint(fdb, __LINE__, "tcfdbiternext");
-            err = true;
-          }
+        tcmapputkeep2(map, kbuf, vbuf);
+        break;
+      case 4:
+        iputchar('4');
+        if(!tcfdbputcat2(fdb, kbuf, ksiz, vbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbputcat2");
+          err = true;
         }
-      }
-      break;
-    default:
-      iputchar('@');
-      if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
-      if(myrand(rnum / 16 + 1) == 0){
-        int cnt = myrand(30);
-        for(int j = 0; j < rnum && !err; j++){
-          ksiz = sprintf(kbuf, "%d", i + j);
-          if(tcfdbout2(fdb, kbuf, ksiz)){
-            cnt--;
-          } else if(tcfdbecode(fdb) != TCENOREC){
+        tcmapputcat(map, kbuf, ksiz, vbuf, vsiz);
+        break;
+      case 5:
+        iputchar('5');
+        if(!tcfdbputcat3(fdb, kbuf, vbuf)){
+          eprint(fdb, __LINE__, "tcfdbputcat3");
+          err = true;
+        }
+        tcmapputcat2(map, kbuf, vbuf);
+        break;
+      case 6:
+        iputchar('6');
+        if(myrand(10) == 0){
+          if(!tcfdbout2(fdb, kbuf, ksiz) && tcfdbecode(fdb) != TCENOREC){
             eprint(fdb, __LINE__, "tcfdbout2");
             err = true;
           }
           tcmapout(map, kbuf, ksiz);
-          if(cnt < 0) break;
         }
-      }
-      break;
+        break;
+      case 7:
+        iputchar('7');
+        if(myrand(10) == 0){
+          if(!tcfdbout3(fdb, kbuf) && tcfdbecode(fdb) != TCENOREC){
+            eprint(fdb, __LINE__, "tcfdbout3");
+            err = true;
+          }
+          tcmapout2(map, kbuf);
+        }
+        break;
+      case 8:
+        iputchar('8');
+        if(!(rbuf = tcfdbget2(fdb, kbuf, ksiz, &vsiz))){
+          if(tcfdbecode(fdb) != TCENOREC){
+            eprint(fdb, __LINE__, "tcfdbget2");
+            err = true;
+          }
+          rbuf = tcsprintf("[%d]", myrand(i + 1));
+          vsiz = strlen(rbuf);
+        }
+        vsiz += myrand(vsiz);
+        rbuf = tcrealloc(rbuf, vsiz + 1);
+        for(int j = 0; j < vsiz; j++){
+          rbuf[j] = myrand(0x100);
+        }
+        if(!tcfdbput2(fdb, kbuf, ksiz, rbuf, vsiz)){
+          eprint(fdb, __LINE__, "tcfdbput2");
+          err = true;
+        }
+        tcmapput(map, kbuf, ksiz, rbuf, vsiz);
+        tcfree(rbuf);
+        break;
+      case 9:
+        iputchar('9');
+        if(!(rbuf = tcfdbget2(fdb, kbuf, ksiz, &vsiz)) && tcfdbecode(fdb) != TCENOREC){
+          eprint(fdb, __LINE__, "tcfdbget2");
+          err = true;
+        }
+        tcfree(rbuf);
+        break;
+      case 10:
+        iputchar('A');
+        if(!(rbuf = tcfdbget3(fdb, kbuf)) && tcfdbecode(fdb) != TCENOREC){
+          eprint(fdb, __LINE__, "tcfdbget3");
+          err = true;
+        }
+        tcfree(rbuf);
+        break;
+      case 11:
+        iputchar('B');
+        if(myrand(1) == 0) vsiz = 1;
+        if((vsiz = tcfdbget4(fdb, id, vbuf, vsiz)) < 0 && tcfdbecode(fdb) != TCENOREC){
+          eprint(fdb, __LINE__, "tcfdbget4");
+          err = true;
+        }
+        break;
+      case 12:
+        iputchar('C');
+        if(myrand(rnum / 128) == 0){
+          if(myrand(2) == 0){
+            if(!tcfdbiterinit(fdb)){
+              eprint(fdb, __LINE__, "tcfdbiterinit");
+              err = true;
+            }
+          } else {
+            if(!tcfdbiterinit2(fdb, myrand(rnum) + 1) && tcfdbecode(fdb) != TCENOREC){
+              eprint(fdb, __LINE__, "tcfdbiterinit2");
+              err = true;
+            }
+          }
+        }
+        for(int j = myrand(rnum) / 1000 + 1; j >= 0; j--){
+          if(tcfdbiternext(fdb) < 0){
+            int ecode = tcfdbecode(fdb);
+            if(ecode != TCEINVALID && ecode != TCENOREC){
+              eprint(fdb, __LINE__, "tcfdbiternext");
+              err = true;
+            }
+          }
+        }
+        break;
+      default:
+        iputchar('@');
+        if(myrand(10000) == 0) srand((unsigned int)(tctime() * 1000) % UINT_MAX);
+        if(myrand(rnum / 16 + 1) == 0){
+          int cnt = myrand(30);
+          for(int j = 0; j < rnum && !err; j++){
+            ksiz = sprintf(kbuf, "%d", i + j);
+            if(tcfdbout2(fdb, kbuf, ksiz)){
+              cnt--;
+            } else if(tcfdbecode(fdb) != TCENOREC){
+              eprint(fdb, __LINE__, "tcfdbout2");
+              err = true;
+            }
+            tcmapout(map, kbuf, ksiz);
+            if(cnt < 0) break;
+          }
+        }
+        break;
     }
     if(i % 50 == 0) iprintf(" (%08d)\n", i);
     if(i == rnum / 2){

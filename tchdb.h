@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The hash database API of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -27,12 +27,6 @@
 __TCHDB_CLINKAGEBEGIN
 
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <time.h>
-#include <limits.h>
-#include <math.h>
 #include <tcutil.h>
 
 
@@ -46,7 +40,6 @@ typedef struct {                         /* type of structure for a hash databas
   void *mmtx;                            /* mutex for method */
   void *rmtxs;                           /* mutexes for records */
   void *dmtx;                            /* mutex for the while database */
-  void *tmtx;                            /* mutex for transaction */
   void *wmtx;                            /* mutex for write ahead logging */
   void *eckey;                           /* key for thread specific error code */
   char *rpath;                           /* real path for locking */
@@ -97,28 +90,28 @@ typedef struct {                         /* type of structure for a hash databas
   int walfd;                             /* file descriptor of write ahead logging */
   uint64_t walend;                       /* end offset of write ahead logging */
   int dbgfd;                             /* file descriptor for debugging */
-  int64_t cnt_writerec;                  /* tesing counter for record write times */
-  int64_t cnt_reuserec;                  /* tesing counter for record reuse times */
-  int64_t cnt_moverec;                   /* tesing counter for record move times */
-  int64_t cnt_readrec;                   /* tesing counter for record read times */
-  int64_t cnt_searchfbp;                 /* tesing counter for FBP search times */
-  int64_t cnt_insertfbp;                 /* tesing counter for FBP insert times */
-  int64_t cnt_splicefbp;                 /* tesing counter for FBP splice times */
-  int64_t cnt_dividefbp;                 /* tesing counter for FBP divide times */
-  int64_t cnt_mergefbp;                  /* tesing counter for FBP merge times */
-  int64_t cnt_reducefbp;                 /* tesing counter for FBP reduce times */
-  int64_t cnt_appenddrp;                 /* tesing counter for DRP append times */
-  int64_t cnt_deferdrp;                  /* tesing counter for DRP defer times */
-  int64_t cnt_flushdrp;                  /* tesing counter for DRP flush times */
-  int64_t cnt_adjrecc;                   /* tesing counter for record cache adjust times */
-  int64_t cnt_defrag;                    /* tesing counter for defragmentation times */
-  int64_t cnt_shiftrec;                  /* tesing counter for record shift times */
-  int64_t cnt_trunc;                     /* tesing counter for truncation times */
+  volatile int64_t cnt_writerec;         /* tesing counter for record write times */
+  volatile int64_t cnt_reuserec;         /* tesing counter for record reuse times */
+  volatile int64_t cnt_moverec;          /* tesing counter for record move times */
+  volatile int64_t cnt_readrec;          /* tesing counter for record read times */
+  volatile int64_t cnt_searchfbp;        /* tesing counter for FBP search times */
+  volatile int64_t cnt_insertfbp;        /* tesing counter for FBP insert times */
+  volatile int64_t cnt_splicefbp;        /* tesing counter for FBP splice times */
+  volatile int64_t cnt_dividefbp;        /* tesing counter for FBP divide times */
+  volatile int64_t cnt_mergefbp;         /* tesing counter for FBP merge times */
+  volatile int64_t cnt_reducefbp;        /* tesing counter for FBP reduce times */
+  volatile int64_t cnt_appenddrp;        /* tesing counter for DRP append times */
+  volatile int64_t cnt_deferdrp;         /* tesing counter for DRP defer times */
+  volatile int64_t cnt_flushdrp;         /* tesing counter for DRP flush times */
+  volatile int64_t cnt_adjrecc;          /* tesing counter for record cache adjust times */
+  volatile int64_t cnt_defrag;           /* tesing counter for defragmentation times */
+  volatile int64_t cnt_shiftrec;         /* tesing counter for record shift times */
+  volatile int64_t cnt_trunc;            /* tesing counter for truncation times */
 } TCHDB;
 
 enum {                                   /* enumeration for additional flags */
   HDBFOPEN = 1 << 0,                     /* whether opened */
-  HDBFFATAL = 1 << 1                     /* whetehr with fatal error */
+  HDBFFATAL = 1 << 1                     /* whether with fatal error */
 };
 
 enum {                                   /* enumeration for tuning options */
@@ -177,7 +170,7 @@ int tchdbecode(TCHDB *hdb);
    `hdb' specifies the hash database object which is not opened.
    If successful, the return value is true, else, it is false.
    Note that the mutual exclusion control is needed if the object is shared by plural threads and
-   this function should should be called before the database is opened. */
+   this function should be called before the database is opened. */
 bool tchdbsetmutex(TCHDB *hdb);
 
 
@@ -633,12 +626,6 @@ bool tchdbhasmutex(TCHDB *hdb);
 bool tchdbmemsync(TCHDB *hdb, bool phys);
 
 
-/* Clear the cache of a hash tree database object.
-   `hdb' specifies the hash tree database object.
-   If successful, the return value is true, else, it is false. */
-bool tchdbcacheclear(TCHDB *hdb);
-
-
 /* Get the number of elements of the bucket array of a hash database object.
    `hdb' specifies the hash database object.
    The return value is the number of elements of the bucket array or 0 if the object does not
@@ -762,6 +749,12 @@ uint32_t tchdbdfunit(TCHDB *hdb);
    gradually without keeping a continuous lock.
    If successful, the return value is true, else, it is false. */
 bool tchdbdefrag(TCHDB *hdb, int64_t step);
+
+
+/* Clear the cache of a hash tree database object.
+   `hdb' specifies the hash tree database object.
+   If successful, the return value is true, else, it is false. */
+bool tchdbcacheclear(TCHDB *hdb);
 
 
 /* Store a record into a hash database object with a duplication handler.

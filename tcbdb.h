@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * The B+ tree database API of Tokyo Cabinet
- *                                                      Copyright (C) 2006-2009 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -27,12 +27,6 @@
 __TCBDB_CLINKAGEBEGIN
 
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <time.h>
-#include <limits.h>
-#include <math.h>
 #include <tcutil.h>
 #include <tchdb.h>
 
@@ -70,23 +64,23 @@ typedef struct {                         /* type of structure for a B+ tree data
   uint64_t capnum;                       /* capacity number of records */
   uint64_t *hist;                        /* history array of visited nodes */
   int hnum;                              /* number of element of the history array */
-  uint64_t hleaf;                        /* ID number of the leaf referred by the history */
-  uint64_t lleaf;                        /* ID number of the last visited leaf */
+  volatile uint64_t hleaf;               /* ID number of the leaf referred by the history */
+  volatile uint64_t lleaf;               /* ID number of the last visited leaf */
   bool tran;                             /* whether in the transaction */
   char *rbopaque;                        /* opaque for rollback */
-  uint64_t clock;                        /* logical clock */
-  int64_t cnt_saveleaf;                  /* tesing counter for leaf save times */
-  int64_t cnt_loadleaf;                  /* tesing counter for leaf load times */
-  int64_t cnt_killleaf;                  /* tesing counter for leaf kill times */
-  int64_t cnt_adjleafc;                  /* tesing counter for node cache adjust times */
-  int64_t cnt_savenode;                  /* tesing counter for node save times */
-  int64_t cnt_loadnode;                  /* tesing counter for node load times */
-  int64_t cnt_adjnodec;                  /* tesing counter for node cache adjust times */
+  volatile uint64_t clock;               /* logical clock */
+  volatile int64_t cnt_saveleaf;         /* tesing counter for leaf save times */
+  volatile int64_t cnt_loadleaf;         /* tesing counter for leaf load times */
+  volatile int64_t cnt_killleaf;         /* tesing counter for leaf kill times */
+  volatile int64_t cnt_adjleafc;         /* tesing counter for node cache adjust times */
+  volatile int64_t cnt_savenode;         /* tesing counter for node save times */
+  volatile int64_t cnt_loadnode;         /* tesing counter for node load times */
+  volatile int64_t cnt_adjnodec;         /* tesing counter for node cache adjust times */
 } TCBDB;
 
 enum {                                   /* enumeration for additional flags */
   BDBFOPEN = HDBFOPEN,                   /* whether opened */
-  BDBFFATAL = HDBFFATAL                  /* whetehr with fatal error */
+  BDBFFATAL = HDBFFATAL                  /* whether with fatal error */
 };
 
 enum {                                   /* enumeration for tuning options */
@@ -159,7 +153,7 @@ int tcbdbecode(TCBDB *bdb);
    `bdb' specifies the B+ tree database object which is not opened.
    If successful, the return value is true, else, it is false.
    Note that the mutual exclusion control is needed if the object is shared by plural threads and
-   this function should should be called before the database is opened. */
+   this function should be called before the database is opened. */
 bool tcbdbsetmutex(TCBDB *bdb);
 
 
@@ -861,12 +855,6 @@ bool tcbdbhasmutex(TCBDB *bdb);
 bool tcbdbmemsync(TCBDB *bdb, bool phys);
 
 
-/* Clear the cache of a B+ tree database object.
-   `bdb' specifies the B+ tree database object.
-   If successful, the return value is true, else, it is false. */
-bool tcbdbcacheclear(TCBDB *bdb);
-
-
 /* Get the comparison function of a B+ tree database object.
    `bdb' specifies the B+ tree database object.
    The return value is the pointer to the comparison function. */
@@ -1015,6 +1003,12 @@ uint32_t tcbdbdfunit(TCBDB *bdb);
    gradually without keeping a continuous lock.
    If successful, the return value is true, else, it is false. */
 bool tcbdbdefrag(TCBDB *bdb, int64_t step);
+
+
+/* Clear the cache of a B+ tree database object.
+   `bdb' specifies the B+ tree database object.
+   If successful, the return value is true, else, it is false. */
+bool tcbdbcacheclear(TCBDB *bdb);
 
 
 /* Store a new record into a B+ tree database object with backward duplication.

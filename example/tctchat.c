@@ -29,7 +29,7 @@ static void proc(TCTMPL *tmpl, TCMPOOL *mpool){
   if(rp){
     int clen = tclmin(tcatoi(rp), 1024 * 1024);
     query = tcmpoolmalloc(mpool, clen + 1);
-    fread(query, 1, clen, stdin);
+    if(fread(query, 1, clen, stdin) != clen) clen = 0;
     query[clen] = '\0';
   }
   if(query) tcwwwformdecode(query, params);

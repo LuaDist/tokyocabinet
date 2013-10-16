@@ -1,5 +1,5 @@
 [% CONF dbpath "tctsearch.tct" \%]
-[% CONF replace "/home/mikio/public_html localhost" \%]
+[% CONF replace "^/home/mikio/public_html localhost" \%]
 [% CONF url "tctsearch.cgi" \%]
 [% CONF title "A Tiny Search System by Tokyo Cabinet" \%]
 <?xml version="1.0" encoding="UTF-8"?>
@@ -72,9 +72,9 @@ function startup(){
 <div class="sidebar">
 <div class="sidecaption">Sponsored Links</div>
 <div class="sidelink">
-<h3 class="title"><a href="http://tokyocabinet.sourceforge.net/">Tokyo Cabinet</a></h3>
+<h3 class="title"><a href="http://1978th.net/tokyocabinet/">Tokyo Cabinet</a></h3>
 <div class="snippet">Powerful, Portable, Practical key-value database.</div>
-<div class="url">tokyocabinet.sourceforge.net/</div>
+<div class="url">1978th.net/tokyocabinet/</div>
 </div>
 <div class="sidelink">
 <h3 class="title"><a href="http://qdbm.sourceforge.net/">QDBM</a></h3>
@@ -87,9 +87,9 @@ function startup(){
 <div class="url">code.google.com/p/bayon/</div>
 </div>
 <div class="sidelink">
-<h3 class="title"><a href="http://code.google.com/p/skyfall/">Skyfall</a></h3>
+<h3 class="title"><a href="http://code.google.com/p/skyload/">Skyload</a></h3>
 <div class="snippet">Load tests against Drizzle/MySQL servers.</div>
-<div class="url">code.google.com/p/skyfall/</div>
+<div class="url">code.google.com/p/skyload/</div>
 </div>
 </div>
 [% FOREACH docs doc \%]
@@ -114,7 +114,7 @@ function startup(){
 [% END \%]
 [% END \%]
 <div class="footer">
-<div><a href="http://tokyocabinet.sourceforge.net/">Tokyo Cabinet Home</a> - <a href="http://tokyocabinet.sourceforge.net/spex-en.html">Specification</a> - <a href="https://sourceforge.net/project/showfiles.php?group_id=200242">Download</a> - <a href="http://freshmeat.net/projects/tokyocabinet/">Announcement on FM.</a></div>
+<div><a href="http://1978th.net/tokyocabinet/">Tokyo Cabinet Home</a> - <a href="http://1978th.net/tokyocabinet/spex-en.html">Specification</a> - <a href="http://1978th.net/">Author's Page</a> - <a href="http://1978th.net/tech-en/promenade.cgi">Blog</a></div>
 <div>Copyright &copy; 2006-2009 Mikio Hirabayashi</div>
 </div>
 </body>

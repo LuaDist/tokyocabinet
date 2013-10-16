@@ -1,6 +1,6 @@
 /*************************************************************************************************
  * IDL for bindings of scripting languages
- *                                                      Copyright (C) 2006-2008 Mikio Hirabayashi
+ *                                                               Copyright (C) 2006-2012 FAL Labs
  * This file is part of Tokyo Cabinet.
  * Tokyo Cabinet is free software; you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation; either
@@ -17,7 +17,7 @@
 /**
  * namespace of Tokyo Cabinet
  */
-module TokyoCabinet {
+module tokyocabinet {
   //----------------------------------------------------------------
   // list of strings (substituted for by the native mechanism)
   //----------------------------------------------------------------
@@ -288,9 +288,6 @@ module TokyoCabinet {
     const long QOSTRDESC = 1;
     const long QONUMASC = 2;
     const long QONUMDESC = 3;
-    const long QPPUT = 1 << 0;
-    const long QPOUT = 1 << 1;
-    const long QPSTOP = 1 << 24;
     const long MSUNION = 0;
     const long MSISECT = 1;
     const long MSDIFF = 2;
